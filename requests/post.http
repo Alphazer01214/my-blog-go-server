@@ -1,0 +1,67 @@
+### create a public post
+POST http://localhost:2333/api/create
+Content-Type: application/json
+Authorization: tomori_token
+
+{
+    "env": {
+    "ipv6": "test",
+    "device_info": "test",
+    "os": "Windows"
+  },
+  "creator": {
+    "ID": 1,
+    "CreatedAt": "2026-03-16T23:20:31.937062+08:00",
+    "UpdatedAt": "2026-03-18T14:18:39.89376+08:00",
+    "DeletedAt": null,
+    "username": "takamatsu_tomori",
+    "email": "alphazer01214@gmail.com",
+    "phone": "114514",
+    "bio": "I'm takamatsu_tomori",
+    "avatar": "https://cdn.discordapp.com/avatars/1/1.png",
+    "admin": false,
+    "banned": false
+  },
+  "title": "test",
+  "content": "test",
+  "keywords": "acceed coat 114514",
+  "category": "test",
+  "public": true,
+  "cover": "https://cdn.discordapp.com/avatars/1/1.png"
+}
+
+
+### create a private post
+POST http://localhost:2333/api/create
+Content-Type: application/json
+Authorization: tomori_token
+
+{
+  "env": {
+    "ipv6": "test",
+    "device_info": "test",
+    "os": "Windows"
+  },
+  "creator": {
+    "ID": 1,
+    "CreatedAt": "2026-03-16T23:20:31.937062+08:00",
+    "UpdatedAt": "2026-03-18T14:18:39.89376+08:00",
+    "DeletedAt": null,
+    "username": "takamatsu_tomori",
+    "email": "alphazer01214@gmail.com",
+    "phone": "114514",
+    "bio": "I'm takamatsu_tomori",
+    "avatar": "https://cdn.discordapp.com/avatars/1/1.png",
+    "admin": false,
+    "banned": false
+  },
+  "title": "private test",
+  "content": "private private private",
+  "keywords": "acceed coat 114514",
+  "category": "test",
+  "public": false,
+  "cover": "https://cdn.discordapp.com/avatars/1/1.png"
+}
+
+### get all posts
+GET http://localhost:2333/api/post/3

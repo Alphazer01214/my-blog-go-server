@@ -1,0 +1,33 @@
+### login
+POST http://localhost:2333/api/auth/login
+Content-Type: application/json
+
+{
+  "username": "takamatsu_tomori",
+  "password": "114514",
+  "env": {
+    "ipv6": "test",
+    "device_info": "test",
+    "os": "Windows"
+  }
+}
+
+### register
+POST http://localhost:2333/api/auth/register
+Content-Type: application/json
+
+{
+  "username": "takamatsu_tomori",
+  "password": "114514",
+  "env": {
+    "ipv6": "test",
+    "device_info": "test",
+    "os": "Windows"
+  }
+}
+
+### logout
+POST http://localhost:2333/api/auth/logout
+Content-Type: application/json
+Authorization: tomori_token
+
