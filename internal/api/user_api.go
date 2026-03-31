@@ -54,7 +54,8 @@ func (u *UserApi) Login(c *gin.Context) {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
-	response.SuccessWithDetail(c, loginResponse, "Login successful")
+
+	response.SuccessWithDetail(c, loginResponse, "login success")
 }
 
 func (u *UserApi) Logout(c *gin.Context) {
@@ -66,25 +67,12 @@ func (u *UserApi) Logout(c *gin.Context) {
 	}
 
 	// 将 token 加入黑名单
-	utils.AddToBlacklist(token)
+	if err := utils.TokenJoinBlacklist(token); err != nil {
+		response.ErrorWithMsg(c, err.Error())
+		return
+	}
 
 	response.SuccessWithMsg(c, "Logout successful")
-}
-
-func (u *UserApi) TokenNext(c *gin.Context, user *entity.User) {
-	if user.Banned {
-		response.ErrorWithMsg(c, "user is banned")
-	}
-	baseClaims := request.BaseClaims{
-		Id:       user.ID,
-		Username: user.Username,
-		RoleType: user.Role,
-	}
-
-	accessClaims := utils.GenerateAccessClaims(baseClaims)
-	accessToken := utils.GenerateAccessTokenFromClaims(accessClaims)
-	refreshToken := utils.GenerateAccessTokenFromClaims(accessClaims)
-
 }
 
 func (u *UserApi) UpdatePassword(c *gin.Context) {

@@ -10,6 +10,10 @@ import (
 var log = logs.NewLogman("db", "dev", 0)
 
 func ConnectPostgres(dbCfg *config.Postgres) *gorm.DB {
+	if dbCfg == nil {
+		panic("postgres config is nil")
+	}
+
 	db, err := gorm.Open(postgres.Open(dbCfg.GetDSN()), &gorm.Config{})
 	if err != nil {
 		log.Error(err)

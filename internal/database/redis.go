@@ -1,7 +1,7 @@
 package database
 
 import (
-	"fmt"
+	"net"
 	"time"
 
 	"blog.alphazer01214.top/internal/config"
@@ -9,8 +9,9 @@ import (
 )
 
 func ConnectRedis(cfg *config.Redis) *redis.Client {
+	addr := net.JoinHostPort(cfg.Host, cfg.Port)
 	client := redis.NewClient(&redis.Options{
-		Addr:         fmt.Sprintf("%s:%s", cfg.Host, cfg.Port),
+		Addr:         addr,
 		Password:     cfg.Password,
 		WriteTimeout: time.Second * time.Duration(cfg.Timeout),
 		ReadTimeout:  time.Second * time.Duration(cfg.Timeout),

@@ -5,8 +5,10 @@ import (
 
 	"blog.alphazer01214.top/internal/entity"
 	"blog.alphazer01214.top/internal/global"
+	"blog.alphazer01214.top/internal/request"
 	"blog.alphazer01214.top/internal/response"
 	"blog.alphazer01214.top/internal/utils"
+	"github.com/go-redis/redis"
 )
 
 type UserService struct{}
@@ -30,6 +32,7 @@ func (us *UserService) Register(user *entity.User, env *entity.EnvInfo) (*respon
 	}, nil
 }
 
+// Login 负责认证并生成登录响应内容
 func (us *UserService) Login(user *entity.User, env *entity.EnvInfo) (*response.Login, error) {
 	var dbu *entity.User
 	dbu, err := us.getUserInstanceByUsername(user.Username)
@@ -42,31 +45,66 @@ func (us *UserService) Login(user *entity.User, env *entity.EnvInfo) (*response.
 	if dbu.Banned {
 		return nil, errors.New("user banned")
 	}
-
-	// 生成 JWT token
-	token, err := utils.GenerateToken(dbu.ID, dbu.Username)
+	tokenResponse, err := us.GenerateToken(user)
 	if err != nil {
-		return nil, errors.New("failed to generate token")
+		return nil, err
 	}
-	global.User.Store(dbu.ID, token)
 
-	rp := &response.Login{
-		UserInfo:  user,
-		Token:     token,
-		ExpiresIn: 1145141919810,
-		Env:       env,
+	return &response.Login{
+		UserInfo: user,
+		Token:    tokenResponse,
+		Env:      env,
+	}, nil
+}
+
+func (us *UserService) GenerateToken(user *entity.User) (*response.Token, error) {
+	baseClaims := request.BaseClaims{
+		Id:       user.ID,
+		Username: user.Username,
+		RoleType: user.Role,
 	}
+
+	accessClaims := utils.GenerateAccessClaims(baseClaims)
+	refreshClaims := utils.GenerateRefreshClaims(baseClaims)
+	accessToken := utils.GenerateAccessTokenFromClaims(accessClaims)
+	refreshToken := utils.GenerateRefreshTokenFromClaims(refreshClaims)
+
+	refreshTokenRecord, err := utils.GetRefreshTokenRedis(user.ID)
+	if err != nil && !errors.Is(err, redis.Nil) {
+		return nil, err
+	}
+
+	// 旧记录加入 blacklist
+	if refreshTokenRecord != "" {
+		if err := utils.TokenJoinBlacklist(refreshTokenRecord); err != nil {
+			return nil, err
+		}
+	}
+
+	// 新 token 存入 redis
+	if err := utils.SetRefreshTokenRedis(user.ID, refreshToken); err != nil {
+		return nil, err
+	}
+
+	rp := &response.Token{
+		AccessToken:            accessToken,
+		RefreshToken:           refreshToken,
+		AccessTokenExpireTime:  global.GetConfig().JWT.AccessTokenExpireTime,
+		RefreshTokenExpireTime: global.GetConfig().JWT.RefreshTokenExpireTime,
+	}
+
 	return rp, nil
 }
 
-func (us *UserService) Logout(user *entity.User) error {
-	if _, ok := global.User.Load(user.ID); ok {
-		global.User.Delete(user.ID)
-		return nil
-	}
-
-	return errors.New("user not login")
-}
+//// Logout 需要黑名单 token
+//func (us *UserService) Logout(user *entity.User, token string) error {
+//	if _, ok := global.User.Load(user.ID); ok {
+//		global.User.Delete(user.ID)
+//		return nil
+//	}
+//
+//	return errors.New("user not login")
+//}
 
 func (us *UserService) GetUserById(id uint) (*response.UserQueryOne, error) {
 	user, err := us.getUserInstanceById(id)

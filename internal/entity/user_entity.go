@@ -24,7 +24,7 @@ type User struct {
 	Password string `json:"-"` // 这表示忽略 Password 字段
 }
 
-type JWTBlacklist struct {
+type TokenBlacklist struct {
 	gorm.Model
-	Jwt string `json:"jwt" gorm:"type:text"`
+	Token string `json:"token" gorm:"type:text"`
 }

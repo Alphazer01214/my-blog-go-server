@@ -11,4 +11,3 @@ var Api = new(Apis)
 
 var userService = service.Service.UserService
 var postService = service.Service.PostService
-var jwtService = service.Service.JWTService

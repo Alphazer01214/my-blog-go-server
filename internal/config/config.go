@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 
 	"gopkg.in/yaml.v3"
@@ -68,10 +69,23 @@ func LoadConfig() *Config {
 	if err != nil {
 		panic(err)
 	}
-	var cfg Config
+	cfg := Config{
+		Server:   &Server{},
+		Postgres: &Postgres{},
+		LLM:      &LLM{},
+		Redis:    &Redis{},
+		JWT:      &JWT{},
+	}
 
 	if err := yaml.Unmarshal(cfgFile, &cfg); err != nil {
 		panic(err)
+	}
+
+	if cfg.Postgres == nil {
+		panic("invalid config: postgres section is missing")
+	}
+	if cfg.Postgres.Host == "" || cfg.Postgres.Port == "" || cfg.Postgres.User == "" || cfg.Postgres.Name == "" {
+		panic(fmt.Sprintf("invalid config: postgres fields are incomplete: host=%q port=%q user=%q name=%q", cfg.Postgres.Host, cfg.Postgres.Port, cfg.Postgres.User, cfg.Postgres.Name))
 	}
 	//if err := godotenv.Load(); err != nil {
 	//	panic(err)

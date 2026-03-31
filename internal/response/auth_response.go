@@ -9,8 +9,16 @@ type Register struct {
 
 // Login 登录响应结构
 type Login struct {
-	Env       *entity.EnvInfo `json:"env"`
-	Token     string          `json:"token"`
-	ExpiresIn int64           `json:"expires_in"` // 过期时间（秒）
-	UserInfo  interface{}     `json:"user_info"`  // 用户信息
+	Env *entity.EnvInfo `json:"env"`
+	// Token access token
+	Token *Token `json:"token"`
+	// UserInfo is entity.User without password
+	UserInfo interface{} `json:"user_info"`
+}
+
+type Token struct {
+	AccessToken            string `json:"access_token"`
+	AccessTokenExpireTime  int    `json:"access_token_expire_time"`
+	RefreshToken           string `json:"refresh_token"`
+	RefreshTokenExpireTime int    `json:"refresh_token_expire_time"`
 }

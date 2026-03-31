@@ -29,30 +29,23 @@ func JWTAuthMiddleware() gin.HandlerFunc {
 		}
 
 		// 检查 token 是否在黑名单中
-		if utils.IsBlacklisted(token) {
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"code":    -1,
-				"message": "token has been revoked",
-			})
-			c.Abort()
-			return
-		}
-
-		// 解析 token
-		claims, err := utils.ParseToken(token)
+		status, err := utils.IsTokenBlacklisted(token)
 		if err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"code":    -1,
-				"message": "invalid or expired token",
+				"message": "unknown error",
 			})
 			c.Abort()
 			return
 		}
-
-		// 将用户信息存入上下文，供后续处理使用
-		c.Set("user_id", claims.UserId)
-		c.Set("username", claims.Username)
-		c.Set("claims", claims)
+		if !status {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"code":    -1,
+				"message": "token is blacklisted",
+			})
+			c.Abort()
+			return
+		}
 
 		c.Next()
 	}
