@@ -9,8 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type PostApi struct {
-}
+type PostApi struct{}
 
 func (pa *PostApi) Create(c *gin.Context) {
 	var req request.PostCreateRequest
@@ -57,4 +56,14 @@ func (pa *PostApi) QueryOneById(c *gin.Context) {
 		return
 	}
 	response.SuccessWithDetail(c, post, "query success")
+}
+
+func (pa *PostApi) Update(c *gin.Context) {
+	var req request.PostUpdateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(400, gin.H{
+			"message": "Invalid request",
+		})
+		return
+	}
 }

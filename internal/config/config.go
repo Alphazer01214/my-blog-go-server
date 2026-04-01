@@ -40,8 +40,10 @@ type JWT struct {
 }
 
 type LLM struct {
-	BaseUrl string `yaml:"base_url" json:"base_url"`
-	ApiKey  string `yaml:"api_key" json:"api_key"`
+	Provider  string `yaml:"provider" json:"provider"`
+	BaseUrl   string `yaml:"base_url" json:"base_url"`
+	ApiKey    string `yaml:"api_key" json:"api_key"`
+	ModelName string `yaml:"model_name" json:"model_name"`
 }
 
 type Config struct {
