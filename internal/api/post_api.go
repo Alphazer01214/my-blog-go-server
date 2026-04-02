@@ -21,7 +21,7 @@ func (pa *PostApi) Create(c *gin.Context) {
 	}
 	post := &entity.Post{
 		EnvInfo:  req.Env,
-		AuthorId: req.Creator.ID,
+		UserId:   req.UserId,
 		Title:    req.Title,
 		Cover:    req.Cover,
 		Category: req.Category,

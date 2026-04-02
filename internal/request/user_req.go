@@ -28,14 +28,14 @@ type UserUpdatePasswordRequest struct {
 
 type UserLoginRequest struct {
 	Env *entity.EnvInfo `json:"env"`
-	//Info     *entity.UserEnvInfo `json:"info"`
-	//Id       uint                `json:"id"`
+	// Info     *entity.UserEnvInfo `json:"info"`
+	// Id       uint                `json:"id"`
 	Username string `json:"username" binding:"required"`
-	//LoginType  constant.LoginType `json:"login_type"`
-	//OS         string             `json:"os"`
-	//IPv4       string             `json:"ipv4"`
-	//IPv6       string             `json:"ipv6"`
-	//DeviceInfo string             `json:"device_info"`
+	// LoginType  constant.LoginType `json:"login_type"`
+	// OS         string             `json:"os"`
+	// IPv4       string             `json:"ipv4"`
+	// IPv6       string             `json:"ipv6"`
+	// DeviceInfo string             `json:"device_info"`
 	Password string `json:"password" binding:"required"`
 }
 

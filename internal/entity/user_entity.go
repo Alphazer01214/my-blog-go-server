@@ -8,15 +8,15 @@ import (
 type User struct {
 	// gorm.Model 已经包含了 ID, CreatedAt, UpdatedAt, DeletedAt
 	gorm.Model
-	//Id        int    `json:"id"`
-	Username string `json:"username"`
-	Email    string `json:"email"`
-	Phone    string `json:"phone"`
-	Bio      string `json:"bio"`
+	// Id        int    `json:"id"`
+	Username string `gorm:"size:64;uniqueIndex;not null" json:"username"`
+	Email    string `gorm:"size:64;uniqueIndex;not null" json:"email"`
+	Phone    string `gorm:"size:64;uniqueIndex;not null" json:"phone"`
+	Bio      string `gorm:"type:text" json:"bio"`
 	// Avatar: url
-	Avatar string `json:"avatar"`
-	//CreatedAt time.Time
-	//UpdatedAt time.Time
+	Avatar string `gorm:"size:114" json:"avatar"`
+	// CreatedAt time.Time
+	// UpdatedAt time.Time
 	Admin  bool              `json:"admin"`
 	Role   constant.RoleType `json:"role"`
 	Banned bool              `json:"banned"`

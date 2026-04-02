@@ -7,7 +7,7 @@ type Post struct {
 	EnvInfo  `json:"env"`
 	Title    string `json:"title"`
 	Cover    string `json:"cover"`
-	AuthorId uint   `json:"author_id"`
+	UserId   uint   `json:"user_id"`
 	Category string `json:"category"`
 	Keywords string `json:"keywords"`
 	Content  string `json:"content"`

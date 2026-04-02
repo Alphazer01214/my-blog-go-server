@@ -22,7 +22,7 @@ func (ps *PostService) Update(id uint, post *entity.Post) error {
 	if err != nil {
 		return err
 	}
-	if post.AuthorId != oldPost.AuthorId {
+	if post.UserId != oldPost.UserId {
 		return errors.New("permisstion denied")
 	}
 
