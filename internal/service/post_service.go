@@ -26,13 +26,24 @@ func (ps *PostService) Update(id uint, post *entity.Post) error {
 		return errors.New("permisstion denied")
 	}
 
-	updates := map[string]interface{}{
-		"title":    post.Title,
-		"category": post.Category,
-		"content":  post.Content,
-		"cover":    post.Cover,
-		"Keywords": post.Keywords,
+	//	updates := map[string]interface{}{
+	//		"title":    post.Title,
+	//		"category": post.Category,
+	//		"content":  post.Content,
+	//		"cover":    post.Cover,
+	//		"Keywords": post.Keywords,
+	//	}
+	dbPost, err := ps.queryOneById(id)
+	if err != nil {
+		return err
 	}
+
+	dbPost.Content = post.Content
+	dbPost.Category = post.Category
+	dbPost.Title = post.Title
+	dbPost.Cover = post.Cover
+	dbPost.Keywords = post.Keywords
+	return global.GetDB().Save(dbPost).Error
 }
 
 func (ps *PostService) create(post *entity.Post) error {
