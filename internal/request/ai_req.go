@@ -34,7 +34,7 @@ type UpdateAgentRequest struct {
 	ModelName string            `json:"model_name"`
 	Prompts   map[string]string `json:"prompts"`
 	Memories  map[string]string `json:"memories"`
-	Activete  bool              `json:"activate"`
+	Activate  bool              `json:"activate"`
 }
 
 type InvokeAgentRequest struct {

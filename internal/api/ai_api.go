@@ -1,6 +1,7 @@
 package api
 
 import (
+	"blog.alphazer01214.top/internal/entity"
 	"blog.alphazer01214.top/internal/request"
 	"blog.alphazer01214.top/internal/response"
 	"github.com/gin-gonic/gin"
@@ -16,7 +17,15 @@ func (ap *AiApi) Create(c *gin.Context) {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
-	if _, err := aiService.CreateAgent(ctx, userId, req); err != nil {
+
+	agent := &entity.Agent{
+		UserId:    userId,
+		Name:      req.AgentName,
+		Provider:  req.Provider,
+		BaseUrl:   req.BaseUrl,
+		ModelName: req.ModelName,
+	}
+	if _, err := aiService.CreateAgent(ctx, agent); err != nil {
 		response.ErrorWithMsg(c, err.Error())
 	}
 
@@ -24,7 +33,29 @@ func (ap *AiApi) Create(c *gin.Context) {
 }
 
 func (ap *AiApi) Update(c *gin.Context) {
+	var req *request.UpdateAgentRequest
+	if err := c.ShouldBindJSON(req); err != nil {
+		response.ErrorWithMsg(c, err.Error())
+		return
+	}
 	ctx := c.Request.Context()
 	userId := c.GetUint("user_id")
+	agentId := c.GetUint("agent_id")
+	newAgent := &entity.Agent{
+		ApiKey:    req.ApiKey,
+		Name:      req.AgentName,
+		Provider:  req.Provider,
+		BaseUrl:   req.BaseUrl,
+		ModelName: req.ModelName,
+		Activate:  req.Activate,
+		Prompts:   req.Prompts,
+		Memories:  req.Memories,
+	}
+
+	if _, err := aiService.UpdateAgent(ctx, userId, agentId, newAgent); err != nil {
+		response.ErrorWithMsg(c, err.Error())
+	} else {
+		response.SuccessWithMsg(c, "update agent success")
+	}
 
 }

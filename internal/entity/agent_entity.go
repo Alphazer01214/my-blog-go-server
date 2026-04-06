@@ -18,6 +18,11 @@ type Agent struct {
 	Provider  string `json:"provider"`
 	Activate  bool   `gorm:"default:false" json:"activate"`
 
+	// options
+
+	Temperature float64 `json:"temperature"`
+	Thinking    bool    `json:"thinking"`
+
 	// User personalize
 	//
 	Prompts  map[string]string `json:"prompts"`
