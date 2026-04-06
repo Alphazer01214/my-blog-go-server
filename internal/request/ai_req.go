@@ -6,10 +6,14 @@ import (
 
 type StandardAiRequest struct {
 	// Uid       uint            `json:"uid"`
-	AgentName string          `json:"agent_name"`
 	Env       *entity.EnvInfo `json:"env"`
-	SysPrompt string          `json:"sys_prompt`
+	SysPrompt string          `json:"sys_prompt"`
 	UsrPrompt string          `json:"usr_prompt"`
+}
+
+type AiOptions struct {
+	Temperature float64 `json:"temperature"`
+	Thinking    bool    `json:"thinking"`
 }
 
 type CreateAgentRequest struct {
@@ -31,4 +35,16 @@ type UpdateAgentRequest struct {
 	Prompts   map[string]string `json:"prompts"`
 	Memories  map[string]string `json:"memories"`
 	Activete  bool              `json:"activate"`
+}
+
+type InvokeAgentRequest struct {
+	AiOptions `json:"ai_options"`
+	SysPrompt string `json:"sys_prompt"`
+	UsrPrompt string `json:"usr_prompt"`
+}
+
+type TmpChatRequest struct {
+	Provider string `json:"provider"`
+	BaseUrl  string `json:"base_url"`
+	ApiKey   string `json:"api_key"`
 }
