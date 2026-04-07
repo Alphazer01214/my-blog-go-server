@@ -66,6 +66,5 @@ func JWTAuthMiddleware() gin.HandlerFunc {
 
 		c.Set("claims", claims)
 		c.Next()
-
 	}
 }
