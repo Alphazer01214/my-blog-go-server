@@ -131,6 +131,17 @@ func ParseAccessToken(token string) (*request.AccessClaims, error) {
 	return nil, errors.New("invalid access claims")
 }
 
+func ParseRefreshToken(token string) (*request.RefreshClaims, error) {
+	claims, err := parseToken(token, &request.RefreshClaims{}, global.GetConfig().JWT.RefreshTokenSecret)
+	if err != nil {
+		return nil, err
+	}
+	if refreshClaims, ok := claims.(*request.RefreshClaims); ok {
+		return refreshClaims, nil
+	}
+	return nil, errors.New("invalid refresh claims")
+}
+
 func setCookies(c *gin.Context, name string, value string, age int, host string) {
 	if net.ParseIP(host) == nil {
 		c.SetCookie(name, value, age, "/", "", false, true)

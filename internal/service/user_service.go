@@ -107,7 +107,7 @@ func (us *UserService) GenerateToken(user *entity.User) (*response.Token, error)
 //}
 
 func (us *UserService) GetUserById(id uint) (*response.UserQueryOne, error) {
-	user, err := us.getUserInstanceById(id)
+	user, err := us.GetUserInstanceById(id)
 	if err != nil {
 		return nil, err
 	}
@@ -176,7 +176,7 @@ func (us *UserService) isPasswordCorrect(id uint, clear string) bool {
 	return utils.IsPasswordCorrect(clear, dbp)
 }
 
-func (us *UserService) getUserInstanceById(id uint) (*entity.User, error) {
+func (us *UserService) GetUserInstanceById(id uint) (*entity.User, error) {
 	var user entity.User
 	if err := global.DB.First(&user, id).Error; err != nil {
 		return nil, err

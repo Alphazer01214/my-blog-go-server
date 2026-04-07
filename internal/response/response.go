@@ -44,3 +44,9 @@ func ErrorWithMsg(c *gin.Context, msg string) {
 func ErrorWithDetail(c *gin.Context, det interface{}, msg string) {
 	Result(c, constant.ERROR, det, msg)
 }
+
+func ErrorAuth(c *gin.Context, msg string) {
+	Result(c, constant.ERROR, gin.H{
+		"reload": true,
+	}, msg)
+}
