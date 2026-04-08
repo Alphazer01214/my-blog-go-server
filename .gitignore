@@ -1,7 +1,7 @@
 *.exe
 ./config/*
 .idea/
-
+config/
 .env
 
 main
