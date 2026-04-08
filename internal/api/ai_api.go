@@ -12,8 +12,8 @@ type AiApi struct{}
 func (ap *AiApi) Create(c *gin.Context) {
 	ctx := c.Request.Context()
 	userId := c.GetUint("user_id")
-	var req *request.CreateAgentRequest
-	if err := c.ShouldBindJSON(req); err != nil {
+	var req *equest.CreateAgentRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
@@ -33,8 +33,8 @@ func (ap *AiApi) Create(c *gin.Context) {
 }
 
 func (ap *AiApi) Update(c *gin.Context) {
-	var req *request.UpdateAgentRequest
-	if err := c.ShouldBindJSON(req); err != nil {
+	var req request.UpdateAgentRequest
+	if err := c.ShouldBindJSON(&req); err != nil{
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
@@ -57,5 +57,15 @@ func (ap *AiApi) Update(c *gin.Context) {
 	} else {
 		response.SuccessWithMsg(c, "update agent success")
 	}
+}
 
+func Invoke(c *gin.Context) {
+	var req request.InvokeAgentRequest
+	if err := c.ShouldBindJSON(&req); err != nil{
+		response.ErrorWithMsg(c, err.Error())
+		return
+	}
+
+	userId := 
+	agentId := c.GetUint("agent_id")
 }

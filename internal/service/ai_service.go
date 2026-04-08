@@ -47,28 +47,78 @@ func (ai *AIService) UpdateAgent(ctx context.Context, userId uint, agentId uint,
 	return agent, nil
 }
 
-func (ai *AIService) InvokeAgent(ctx context.Context, userId uint, agentId uint, req *request.InvokeAgentRequest) (response.StandardAiResponse, error) {
+func (ai *AIService) InvokeAgent(ctx context.Context, userId uint, agentId uint, req *request.InvokeAgentRequest) (*response.StandardAiResponse, error) {
 	var chatModel interface{}
 	agent, err := ai.queryAgentById(ctx, agentId)
 	if err != nil {
-		return response.StandardAiResponse{}, err
+		return &response.StandardAiResponse{
+			AgentId: agentId,
+			Status:  false,
+			Message: err.Error(),
+		}, err
 	}
 	if userId != agent.UserId {
-		return response.StandardAiResponse{}, errors.New("unauthorized")
+		return &response.StandardAiResponse{
+			AgentId: agentId,
+			Status:  false,
+			Message: err.Error(),
+		}, errors.New("unauthorized")
 	}
 	message := []*schema.Message{
 		schema.UserMessage(req.UsrPrompt),
 		schema.SystemMessage(req.SysPrompt),
 	}
 
-	chatModel, err := ai.getEinoChatModel(ctx, agent)
+	chatModel, err = ai.getEinoChatModel(ctx, agent)
 	if err != nil {
-		return response.StandardAiResponse{}, err
+		return &response.StandardAiResponse{
+			AgentId: agentId,
+			Status:  false,
+			Message: err.Error(),
+		}, err
 	}
 
 	switch t := chatModel.(type) {
 	case *openai.ChatModel:
-		content, err := t.Generate(ctx)
+		content, err := t.Generate(ctx, message)
+		if err != nil {
+			return &response.StandardAiResponse{
+				AgentId: agentId,
+				Status:  false,
+				Message: err.Error(),
+			}, err
+		}
+
+		return &response.StandardAiResponse{
+			AgentId: agentId,
+			Status:  true,
+			Content: content.Content,
+			Message: "",
+		}, nil
+
+	case *ollama.ChatModel:
+		content, err := t.Generate(ctx, message)
+		if err != nil {
+			return &response.StandardAiResponse{
+				AgentId: agentId,
+				Status:  false,
+				Message: err.Error(),
+			}, err
+		}
+		return &response.StandardAiResponse{
+			AgentId:          agentId,
+			Status:           true,
+			Content:          content.Content,
+			ReasoningContent: content.ReasoningContent,
+			Message:          "",
+		}, nil
+
+	default:
+		return &response.StandardAiResponse{
+			AgentId: agentId,
+			Status:  false,
+			Message: "unsupported model",
+		}, errors.New("unsupported model")
 	}
 
 }

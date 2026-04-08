@@ -1,9 +1,9 @@
 package response
 
-import "blog.alphazer01214.top/internal/entity"
-
 type StandardAiResponse struct {
-	Agent   *entity.Agent
-	Content string
-	Status  bool
+	AgentId          uint   `json:"agent_id"`
+	ReasoningContent string `json:"reasoning_content"`
+	Content          string `json:"content"`
+	Status           bool   `json:"status"`
+	Message          string `json:"message"`
 }
