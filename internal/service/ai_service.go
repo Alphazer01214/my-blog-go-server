@@ -120,7 +120,9 @@ func (ai *AIService) InvokeAgent(ctx context.Context, userId uint, agentId uint,
 			Message: "unsupported model",
 		}, errors.New("unsupported model")
 	}
+}
 
+func (ai *AIService) StreamChat(ctx context.Context) {
 }
 
 func (ai *AIService) queryAgentById(ctx context.Context, id uint) (*entity.Agent, error) {

@@ -12,7 +12,7 @@ type AiApi struct{}
 func (ap *AiApi) Create(c *gin.Context) {
 	ctx := c.Request.Context()
 	userId := c.GetUint("user_id")
-	var req *equest.CreateAgentRequest
+	var req request.CreateAgentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
@@ -34,7 +34,7 @@ func (ap *AiApi) Create(c *gin.Context) {
 
 func (ap *AiApi) Update(c *gin.Context) {
 	var req request.UpdateAgentRequest
-	if err := c.ShouldBindJSON(&req); err != nil{
+	if err := c.ShouldBindJSON(&req); err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
@@ -59,13 +59,24 @@ func (ap *AiApi) Update(c *gin.Context) {
 	}
 }
 
-func Invoke(c *gin.Context) {
+func (ap *AiApi) Invoke(c *gin.Context) {
 	var req request.InvokeAgentRequest
-	if err := c.ShouldBindJSON(&req); err != nil{
+	if err := c.ShouldBindJSON(&req); err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
-
-	userId := 
+	userId := c.GetUint("user_id")
 	agentId := c.GetUint("agent_id")
+	ctx := c.Request.Context()
+
+	rp, err := aiService.InvokeAgent(ctx, userId, agentId, &req)
+	if err != nil {
+		response.ErrorWithDetail(c, rp, "error")
+	}
+
+	response.SuccessWithDetail(c, rp, "success")
 }
+
+func (ap *AiApi) OnlineStreamChat(c *gin.Context) {
+}
+
