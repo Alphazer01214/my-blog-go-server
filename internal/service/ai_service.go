@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"time"
 
 	"blog.alphazer01214.top/internal/entity"
 	"blog.alphazer01214.top/internal/global"
@@ -144,16 +146,48 @@ func (ai *AIService) InvokeAgent(ctx context.Context, userId uint, agentId uint,
 }
 
 // StreamChat receive a session id
-func (ai *AIService) StreamChat(ctx context.Context, userId uint, agentId uint, chatId string) (model.ToolCallingChatModel, error) {
+func (ai *AIService) StreamChat(ctx context.Context, userId uint, agentId uint, chatId string, req *request.InvokeAgentRequest, callback func(string) error) error {
 	agent, err := ai.queryAgentById(ctx, agentId)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	chatModel, err := ai.getEinoChatModel(ctx, agent)
 	if err != nil {
-		return nil, err
+		return err
+	}
+	session, err := ai.loadChat(ctx, chatId)
+	if err != nil {
+		return err
+	}
+	ask := entity.ChatMessage{
+		Role:    "user",
+		Content: req.UsrPrompt,
+		Time:    time.Now().Unix(),
+	}
+	prompt, err := ai.buildPrompt(ctx, session, ask)
+	if err != nil {
+		return err
+	}
+	stream, err := chatModel.Stream(ctx, prompt)
+	if err != nil {
+		return err
+	}
+	defer stream.Close()
+
+	for {
+		chunk, err := stream.Recv()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return err
+		}
+		if err := callback(chunk.Content); err != nil {
+			return err
+		}
 	}
 
+	return nil
 }
 
 func (ai *AIService) queryAgentById(ctx context.Context, id uint) (*entity.Agent, error) {
@@ -195,10 +229,9 @@ func (ai *AIService) getEinoChatModel(ctx context.Context, agent *entity.Agent) 
 	return m, nil
 }
 
-func (ai *AIService) buildPrompt(ctx context.Context, history []entity.ChatMessage, newMessage entity.ChatMessage) ([]*schema.Message, error) {
-
+func (ai *AIService) buildPrompt(ctx context.Context, session *entity.Session, newMessage entity.ChatMessage) ([]*schema.Message, error) {
 	var msg []*schema.Message
-
+	history := session.ChatMessages
 	for _, h := range history {
 		var rt schema.RoleType
 		role := h.Role
@@ -220,7 +253,7 @@ func (ai *AIService) buildPrompt(ctx context.Context, history []entity.ChatMessa
 	return msg, nil
 }
 
-func (ai *AIService) getLastKChatMessages(chat *entity.Chat, k int) []entity.ChatMessage {
+func (ai *AIService) getLastKChatMessages(chat *entity.Session, k int) []entity.ChatMessage {
 	if chat == nil || k < 0 {
 		return nil
 	}
@@ -232,8 +265,8 @@ func (ai *AIService) getLastKChatMessages(chat *entity.Chat, k int) []entity.Cha
 	return cm[len(cm)-k:]
 }
 
-func (ai *AIService) loadChat(ctx context.Context, chatId string) (*entity.Chat, error) {
-	var chat entity.Chat
+func (ai *AIService) loadChat(ctx context.Context, chatId string) (*entity.Session, error) {
+	var chat entity.Session
 	data, err := global.GetRedis().Get(ctx, chatId).Bytes()
 	if errors.Is(err, redis.Nil) {
 		return nil, errors.New("not found")
@@ -248,7 +281,7 @@ func (ai *AIService) loadChat(ctx context.Context, chatId string) (*entity.Chat,
 	return &chat, nil
 }
 
-func (ai *AIService) saveChat(ctx context.Context, chatId string, chat *entity.Chat) error {
+func (ai *AIService) saveChat(ctx context.Context, chatId string, chat *entity.Session) error {
 	data, err := json.Marshal(chat)
 	if err != nil {
 		return err

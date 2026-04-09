@@ -8,8 +8,9 @@ type StandardAiRequest struct {
 }
 
 type AiOptions struct {
-	Temperature float64 `json:"temperature"`
-	Thinking    bool    `json:"thinking"`
+	Temperature    float64 `json:"temperature"`
+	Thinking       bool    `json:"thinking"`
+	SearchInternet bool    `json:"search_internet"`
 }
 
 type CreateAgentRequest struct {

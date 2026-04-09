@@ -16,6 +16,6 @@ func SetupServiceRouter(r *gin.Engine) {
 		protected.POST("/create_agent", aiApi.Create)
 		protected.POST("/update_agent", aiApi.Update)
 		protected.POST("/invoke_agent", aiApi.Invoke)
-
+		protected.POST("/chat", aiApi.OnlineStreamChat)
 	}
 }

@@ -29,7 +29,7 @@ type Agent struct {
 	Memories map[string]string `json:"memories"`
 }
 
-type Chat struct {
+type Session struct {
 	UUID         string        `json:"uuid"`
 	ChatMessages []ChatMessage `json:"chat_messages"`
 	CreateAt     int64         `json:"create_at"`

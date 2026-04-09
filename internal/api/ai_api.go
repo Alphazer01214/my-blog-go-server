@@ -1,6 +1,11 @@
 package api
 
 import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+
 	"blog.alphazer01214.top/internal/entity"
 	"blog.alphazer01214.top/internal/request"
 	"blog.alphazer01214.top/internal/response"
@@ -83,11 +88,48 @@ func (ap *AiApi) OnlineStreamChat(c *gin.Context) {
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Connection", "keep-alive")
 	c.Header("Cache-Control", "")
+	ctx := c.Request.Context()
 
 	chatId := c.Query("chat_id")
 	userId := c.GetUint("user_id")
 	agentId := c.GetUint("agent_id")
+	var req request.InvokeAgentRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.ErrorWithMsg(c, err.Error())
+		return
+	}
 	if chatId == "" {
 		chatId = utils.GenerateUUID()
 	}
+
+	rp := response.StandardAiResponse{
+		AgentId: agentId,
+		Status:  true,
+		Content: "",
+	}
+
+	pushStream := func(data string) error {
+		if c.Writer.Status() != http.StatusOK {
+			//response.ErrorWithMsg(c, "internet interrupted")
+			return errors.New("internet interrupted")
+		}
+
+		rp.Content += data
+		j, _ := json.Marshal(rp)
+		_, err := fmt.Fprintf(c.Writer, "data: %s\n\n", j)
+		if err != nil {
+			return err
+		}
+
+		return nil
+	}
+	if err := aiService.StreamChat(ctx, userId, agentId, chatId, &req, pushStream); err != nil {
+		response.ErrorWithMsg(c, err.Error())
+	}
+
+	response.SuccessWithDetail(c, response.OnlineStreamChatResponse{
+		ChatId:  chatId,
+		AgentId: agentId,
+		UserId:  userId,
+	}, "success")
 }
