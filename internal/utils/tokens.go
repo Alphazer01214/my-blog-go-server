@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"context"
 	"errors"
 	"net"
 	"strconv"
@@ -95,12 +96,12 @@ func SetRefreshTokenRedis(id uint, token string) error {
 	expire := global.GetConfig().JWT.RefreshTokenExpireTime
 	dur := time.Duration(expire) * time.Second
 	idstr := strconv.Itoa(int(id))
-	return global.GetRedis().Set(idstr, token, dur).Err()
+	return global.GetRedis().Set(context.Background(), idstr, token, dur).Err()
 }
 
 func GetRefreshTokenRedis(id uint) (string, error) {
 	idstr := strconv.Itoa(int(id))
-	return global.GetRedis().Get(idstr).Result()
+	return global.GetRedis().Get(context.Background(), idstr).Result()
 }
 
 func TokenJoinBlacklist(token string) error {
