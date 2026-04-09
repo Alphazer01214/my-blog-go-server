@@ -7,7 +7,7 @@ import (
 	"blog.alphazer01214.top/internal/config"
 	"blog.alphazer01214.top/internal/database"
 	"blog.alphazer01214.top/internal/logs"
-	"github.com/go-redis/redis"
+	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
 

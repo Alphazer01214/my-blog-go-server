@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"blog.alphazer01214.top/internal/config"
-	"github.com/go-redis/redis"
+	"github.com/redis/go-redis/v9"
 )
 
 func ConnectRedis(cfg *config.Redis) *redis.Client {

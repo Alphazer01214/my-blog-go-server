@@ -4,6 +4,7 @@ import (
 	"blog.alphazer01214.top/internal/entity"
 	"blog.alphazer01214.top/internal/request"
 	"blog.alphazer01214.top/internal/response"
+	"blog.alphazer01214.top/internal/utils"
 	"github.com/gin-gonic/gin"
 )
 
@@ -77,6 +78,16 @@ func (ap *AiApi) Invoke(c *gin.Context) {
 	response.SuccessWithDetail(c, rp, "success")
 }
 
+// OnlineStreamChat should handle chat in api layer
 func (ap *AiApi) OnlineStreamChat(c *gin.Context) {
-}
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Connection", "keep-alive")
+	c.Header("Cache-Control", "")
 
+	chatId := c.Query("chat_id")
+	userId := c.GetUint("user_id")
+	agentId := c.GetUint("agent_id")
+	if chatId == "" {
+		chatId = utils.GenerateUUID()
+	}
+}

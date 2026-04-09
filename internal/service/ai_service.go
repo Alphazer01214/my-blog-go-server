@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 
 	"blog.alphazer01214.top/internal/entity"
@@ -10,7 +11,9 @@ import (
 	"blog.alphazer01214.top/internal/response"
 	"github.com/cloudwego/eino-ext/components/model/ollama"
 	"github.com/cloudwego/eino-ext/components/model/openai"
+	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
+	"github.com/redis/go-redis/v9"
 )
 
 type AIService struct{}
@@ -79,7 +82,42 @@ func (ai *AIService) InvokeAgent(ctx context.Context, userId uint, agentId uint,
 	}
 
 	switch t := chatModel.(type) {
-	case *openai.ChatModel:
+	//case *openai.ChatModel:
+	//	content, err := t.Generate(ctx, message)
+	//	if err != nil {
+	//		return &response.StandardAiResponse{
+	//			AgentId: agentId,
+	//			Status:  false,
+	//			Message: err.Error(),
+	//		}, err
+	//	}
+	//
+	//	return &response.StandardAiResponse{
+	//		AgentId: agentId,
+	//		Status:  true,
+	//		Content: content.Content,
+	//		ReasoningContent: content.ReasoningContent,
+	//		Message: "",
+	//	}, nil
+	//
+	//case *ollama.ChatModel:
+	//	content, err := t.Generate(ctx, message)
+	//	if err != nil {
+	//		return &response.StandardAiResponse{
+	//			AgentId: agentId,
+	//			Status:  false,
+	//			Message: err.Error(),
+	//		}, err
+	//	}
+	//	return &response.StandardAiResponse{
+	//		AgentId:          agentId,
+	//		Status:           true,
+	//		Content:          content.Content,
+	//		ReasoningContent: content.ReasoningContent,
+	//		Message:          "",
+	//	}, nil
+
+	case model.ToolCallingChatModel:
 		content, err := t.Generate(ctx, message)
 		if err != nil {
 			return &response.StandardAiResponse{
@@ -88,29 +126,12 @@ func (ai *AIService) InvokeAgent(ctx context.Context, userId uint, agentId uint,
 				Message: err.Error(),
 			}, err
 		}
-
 		return &response.StandardAiResponse{
 			AgentId: agentId,
 			Status:  true,
 			Content: content.Content,
-			Message: "",
-		}, nil
-
-	case *ollama.ChatModel:
-		content, err := t.Generate(ctx, message)
-		if err != nil {
-			return &response.StandardAiResponse{
-				AgentId: agentId,
-				Status:  false,
-				Message: err.Error(),
-			}, err
-		}
-		return &response.StandardAiResponse{
-			AgentId:          agentId,
-			Status:           true,
-			Content:          content.Content,
-			ReasoningContent: content.ReasoningContent,
-			Message:          "",
+			//ReasoningContent: content.ReasoningContent,
+			Message: "success",
 		}, nil
 
 	default:
@@ -122,7 +143,17 @@ func (ai *AIService) InvokeAgent(ctx context.Context, userId uint, agentId uint,
 	}
 }
 
-func (ai *AIService) StreamChat(ctx context.Context) {
+// StreamChat receive a session id
+func (ai *AIService) StreamChat(ctx context.Context, userId uint, agentId uint, chatId string) (model.ToolCallingChatModel, error) {
+	agent, err := ai.queryAgentById(ctx, agentId)
+	if err != nil {
+		return nil, err
+	}
+	chatModel, err := ai.getEinoChatModel(ctx, agent)
+	if err != nil {
+		return nil, err
+	}
+
 }
 
 func (ai *AIService) queryAgentById(ctx context.Context, id uint) (*entity.Agent, error) {
@@ -133,8 +164,8 @@ func (ai *AIService) queryAgentById(ctx context.Context, id uint) (*entity.Agent
 	return agent, nil
 }
 
-func (ai *AIService) getEinoChatModel(ctx context.Context, agent *entity.Agent) (interface{}, error) {
-	var model interface{}
+func (ai *AIService) getEinoChatModel(ctx context.Context, agent *entity.Agent) (model.ToolCallingChatModel, error) {
+	var m model.ToolCallingChatModel
 	var err error
 	provider := agent.Provider
 	apiKey := agent.ApiKey
@@ -143,14 +174,14 @@ func (ai *AIService) getEinoChatModel(ctx context.Context, agent *entity.Agent) 
 
 	switch provider {
 	case "openai":
-		model, err = openai.NewChatModel(ctx, &openai.ChatModelConfig{
+		m, err = openai.NewChatModel(ctx, &openai.ChatModelConfig{
 			APIKey:  apiKey,
 			BaseURL: baseUrl,
 			Model:   modelName,
 		})
 
 	case "ollama":
-		model, err = ollama.NewChatModel(ctx, &ollama.ChatModelConfig{
+		m, err = ollama.NewChatModel(ctx, &ollama.ChatModelConfig{
 			BaseURL: baseUrl,
 			Model:   modelName,
 		})
@@ -161,5 +192,66 @@ func (ai *AIService) getEinoChatModel(ctx context.Context, agent *entity.Agent) 
 	if err != nil {
 		return nil, err
 	}
-	return model, nil
+	return m, nil
+}
+
+func (ai *AIService) buildPrompt(ctx context.Context, history []entity.ChatMessage, newMessage entity.ChatMessage) ([]*schema.Message, error) {
+
+	var msg []*schema.Message
+
+	for _, h := range history {
+		var rt schema.RoleType
+		role := h.Role
+		if role == "model" {
+			rt = schema.Assistant
+		} else {
+			rt = schema.User
+		}
+		msg = append(msg, &schema.Message{
+			Role:    rt,
+			Content: h.Content,
+		})
+	}
+	msg = append(msg, &schema.Message{
+		Role:    schema.User,
+		Content: newMessage.Content,
+	})
+
+	return msg, nil
+}
+
+func (ai *AIService) getLastKChatMessages(chat *entity.Chat, k int) []entity.ChatMessage {
+	if chat == nil || k < 0 {
+		return nil
+	}
+	cm := chat.ChatMessages
+	if len(cm) <= k {
+		return cm
+	}
+
+	return cm[len(cm)-k:]
+}
+
+func (ai *AIService) loadChat(ctx context.Context, chatId string) (*entity.Chat, error) {
+	var chat entity.Chat
+	data, err := global.GetRedis().Get(ctx, chatId).Bytes()
+	if errors.Is(err, redis.Nil) {
+		return nil, errors.New("not found")
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(data, &chat); err != nil {
+		return nil, err
+	}
+
+	return &chat, nil
+}
+
+func (ai *AIService) saveChat(ctx context.Context, chatId string, chat *entity.Chat) error {
+	data, err := json.Marshal(chat)
+	if err != nil {
+		return err
+	}
+	return global.GetRedis().Set(ctx, chatId, data, 0).Err()
 }

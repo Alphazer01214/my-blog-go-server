@@ -1,14 +1,10 @@
 package request
 
-import (
-	"blog.alphazer01214.top/internal/entity"
-)
-
 type StandardAiRequest struct {
 	// Uid       uint            `json:"uid"`
-	Env       *entity.EnvInfo `json:"env"`
-	SysPrompt string          `json:"sys_prompt"`
-	UsrPrompt string          `json:"usr_prompt"`
+	//Env       *entity.EnvInfo `json:"env"`
+	SysPrompt string `json:"sys_prompt"`
+	UsrPrompt string `json:"usr_prompt"`
 }
 
 type AiOptions struct {

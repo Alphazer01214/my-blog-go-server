@@ -28,3 +28,17 @@ type Agent struct {
 	Prompts  map[string]string `json:"prompts"`
 	Memories map[string]string `json:"memories"`
 }
+
+type Chat struct {
+	UUID         string        `json:"uuid"`
+	ChatMessages []ChatMessage `json:"chat_messages"`
+	CreateAt     int64         `json:"create_at"`
+	UpdateAt     int64         `json:"update_at"`
+}
+
+type ChatMessage struct {
+	// Role: user or model
+	Role    string `json:"role"`
+	Content string `json:"content"`
+	Time    int64  `json:"time"`
+}
