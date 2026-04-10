@@ -55,22 +55,36 @@ func (u *UserApi) Login(c *gin.Context) {
 		return
 	}
 
+	// 成功登录，把refresh token 和 access token 放进cookies
+	utils.SetRefreshTokenCookie(c, loginResponse.Token.RefreshToken, loginResponse.Token.RefreshTokenExpireTime)
+	utils.SetAccessTokenCookie(c, loginResponse.Token.AccessToken, loginResponse.Token.AccessTokenExpireTime)
+	c.Set("user_id", loginResponse.UserInfo.ID)
 	response.SuccessWithDetail(c, loginResponse, "login success")
 }
 
 func (u *UserApi) Logout(c *gin.Context) {
 	// 从请求头获取 token
-	token := c.GetHeader("Authorization")
-	if token == "" {
-		response.ErrorWithMsg(c, "token is required")
+	//token := c.GetHeader("Authorization")
+	//if token == "" {
+	//	response.ErrorWithMsg(c, "token is required")
+	//	return
+	//}
+	refreshToken := utils.GetRefreshTokenCookie(c)
+	accessToken := utils.GetAccessTokenCookie(c)
+	if refreshToken == "" {
+		response.ErrorWithMsg(c, "not login yet")
 		return
 	}
-
+	if accessToken == "" {
+		response.ErrorWithMsg(c, "not login yet")
+	}
 	// 将 token 加入黑名单
-	if err := utils.TokenJoinBlacklist(token); err != nil {
+	if err := utils.TokenJoinBlacklist(refreshToken); err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
+	utils.RemoveRefreshTokenCookie(c)
+	utils.RemoveAccessTokenCookie(c)
 
 	response.SuccessWithMsg(c, "Logout successful")
 }

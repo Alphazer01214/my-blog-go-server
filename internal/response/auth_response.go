@@ -12,8 +12,8 @@ type Login struct {
 	Env *entity.EnvInfo `json:"env"`
 	// Token access token
 	Token *Token `json:"token"`
-	// UserInfo is entity.User without password
-	UserInfo interface{} `json:"user_info"`
+	// UserInfo is entity.User without password, therefore do not use pointer
+	UserInfo entity.User `json:"user_info"`
 }
 
 type Token struct {

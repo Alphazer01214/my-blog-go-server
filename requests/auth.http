@@ -12,6 +12,20 @@ Content-Type: application/json
   }
 }
 
+### login another
+POST http://localhost:2333/api/auth/login
+Content-Type: application/json
+
+{
+  "username": "alphazer01214",
+  "password": "114514",
+  "env": {
+    "ipv6": "test",
+    "device_info": "test",
+    "os": "Windows"
+  }
+}
+
 ### register
 POST http://localhost:2333/api/auth/register
 Content-Type: application/json
@@ -26,8 +40,22 @@ Content-Type: application/json
   }
 }
 
+### register another
+POST http://localhost:2333/api/auth/register
+Content-Type: application/json
+
+{
+  "username": "alphazer01214",
+  "password": "114514",
+  "env": {
+    "ipv6": "test",
+    "device_info": "test",
+    "os": "Windows"
+  }
+}
+
 ### logout
 POST http://localhost:2333/api/auth/logout
 Content-Type: application/json
-Authorization: tomori_token
+#Authorization: tomori_token
 

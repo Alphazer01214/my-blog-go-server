@@ -1,6 +1,7 @@
 package entity
 
 import (
+	"gorm.io/datatypes"
 	"gorm.io/gorm"
 )
 
@@ -25,8 +26,8 @@ type Agent struct {
 
 	// User personalize
 	//
-	Prompts  map[string]string `json:"prompts"`
-	Memories map[string]string `json:"memories"`
+	Prompts  datatypes.JSONMap `json:"prompts"`
+	Memories datatypes.JSONMap `json:"memories"`
 }
 
 type Session struct {

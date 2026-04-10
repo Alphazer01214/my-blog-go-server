@@ -1,0 +1,13 @@
+POST http://localhost:2333/api/chat
+Content-Type: application/json
+
+{
+  "agent_id": 1,
+  "ai_options": {
+    "temperature": 0.7,
+    "thinking": false,
+    "search_internet": false
+  },
+  "sys_prompt": "You are a keyboard politician.",
+  "usr_prompt": "Is Xi Jinping the president of China?"
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
+	"github.com/eino-contrib/ollama/api"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -147,9 +149,13 @@ func (ai *AIService) InvokeAgent(ctx context.Context, userId uint, agentId uint,
 
 // StreamChat receive a session id
 func (ai *AIService) StreamChat(ctx context.Context, userId uint, agentId uint, chatId string, req *request.InvokeAgentRequest, callback func(string) error) error {
+	fmt.Printf("[service] stream chat: userId: %d, agentId: %d, chatId: %s\n", userId, agentId, chatId)
 	agent, err := ai.queryAgentById(ctx, agentId)
 	if err != nil {
 		return err
+	}
+	if agent.UserId != userId {
+		return errors.New("service unauthorized: the agent's owner is not you")
 	}
 	chatModel, err := ai.getEinoChatModel(ctx, agent)
 	if err != nil {
@@ -191,11 +197,11 @@ func (ai *AIService) StreamChat(ctx context.Context, userId uint, agentId uint, 
 }
 
 func (ai *AIService) queryAgentById(ctx context.Context, id uint) (*entity.Agent, error) {
-	var agent *entity.Agent
-	if err := global.GetDB().WithContext(ctx).First(agent, id).Error; err != nil {
+	var agent entity.Agent
+	if err := global.GetDB().WithContext(ctx).First(&agent, id).Error; err != nil {
 		return nil, err
 	}
-	return agent, nil
+	return &agent, nil
 }
 
 func (ai *AIService) getEinoChatModel(ctx context.Context, agent *entity.Agent) (model.ToolCallingChatModel, error) {
@@ -216,8 +222,9 @@ func (ai *AIService) getEinoChatModel(ctx context.Context, agent *entity.Agent) 
 
 	case "ollama":
 		m, err = ollama.NewChatModel(ctx, &ollama.ChatModelConfig{
-			BaseURL: baseUrl,
-			Model:   modelName,
+			BaseURL:  baseUrl,
+			Model:    modelName,
+			Thinking: &api.ThinkValue{Value: false},
 		})
 	default:
 		return nil, errors.New("unsupported provider")
@@ -269,7 +276,7 @@ func (ai *AIService) loadChat(ctx context.Context, chatId string) (*entity.Sessi
 	var chat entity.Session
 	data, err := global.GetRedis().Get(ctx, chatId).Bytes()
 	if errors.Is(err, redis.Nil) {
-		return nil, errors.New("not found")
+		return &chat, nil
 	}
 	if err != nil {
 		return nil, err

@@ -34,6 +34,7 @@ func main() {
 	// 设置用户路由
 	router.SetupUserRouter(r)
 	router.SetupPostRouter(r)
+	router.SetupServiceRouter(r)
 
 	// 从配置文件读取端口启动服务器
 	addr := ":" + global.Config.Server.Port

@@ -10,8 +10,8 @@ type User struct {
 	gorm.Model
 	// Id        int    `json:"id"`
 	Username string `gorm:"size:64;uniqueIndex;not null" json:"username"`
-	Email    string `gorm:"size:64;uniqueIndex;not null" json:"email"`
-	Phone    string `gorm:"size:64;uniqueIndex;not null" json:"phone"`
+	Email    string `gorm:"size:64" json:"email"`
+	Phone    string `gorm:"size:64" json:"phone"`
 	Bio      string `gorm:"type:text" json:"bio"`
 	// Avatar: url
 	Avatar string `gorm:"size:114" json:"avatar"`
@@ -20,6 +20,8 @@ type User struct {
 	Admin  bool              `json:"admin"`
 	Role   constant.RoleType `json:"role"`
 	Banned bool              `json:"banned"`
+
+	//Agents datatypes.JSONArrayExpression `gorm:"type:json" json:"agents"`
 
 	Password string `json:"-"` // 这表示忽略 Password 字段
 }

@@ -1,7 +1,7 @@
 ### update password
 POST http://localhost:2333/api/update_password
 Content-Type: application/json
-Authorization: tomori_token
+#Authorization: tomori_token
 
 {
   "id": 1,
@@ -17,7 +17,7 @@ Authorization: tomori_token
 ### update profile
 POST http://localhost:2333/api/update_profile
 Content-Type: application/json
-Authorization: tomori_token
+#Authorization: tomori_token
 
 {
   "id": 1,
@@ -35,3 +35,28 @@ Authorization: tomori_token
 
 ### query one user
 GET http://localhost:2333/api/user/1
+
+### create agent
+POST http://localhost:2333/api/create_agent
+Content-Type: application/json
+
+{
+  "agent_name": "tomorin",
+  "base_url": "localhost:11434",
+  "api_key": "1145141919810",
+  "provider": "ollama",
+  "model_name": "huihui_ai/qwen3.5-abliterated:4B"
+}
+
+### update agent
+POST http://localhost:2333/api/update_agent
+Content-Type: application/json
+
+{
+  "agent_id": 1,
+  "agent_name": "tomorin",
+  "base_url": "http://localhost:11434",
+    "api_key": "1145141919810",
+  "provider": "ollama",
+  "model_name": "huihui_ai/qwen3.5-abliterated:4B"
+}

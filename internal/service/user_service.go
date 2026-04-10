@@ -8,7 +8,6 @@ import (
 	"blog.alphazer01214.top/internal/request"
 	"blog.alphazer01214.top/internal/response"
 	"blog.alphazer01214.top/internal/utils"
-	"github.com/go-redis/redis"
 )
 
 type UserService struct{}
@@ -45,13 +44,18 @@ func (us *UserService) Login(user *entity.User, env *entity.EnvInfo) (*response.
 	if dbu.Banned {
 		return nil, errors.New("user banned")
 	}
-	tokenResponse, err := us.GenerateToken(user)
+	// Build token from persisted user data to avoid zero-value ID in claims.
+	tokenResponse, err := us.GenerateToken(dbu)
 	if err != nil {
 		return nil, err
 	}
 
+	var noPass entity.User
+	noPass = *dbu
+	noPass.Password = "protected"
+
 	return &response.Login{
-		UserInfo: user,
+		UserInfo: noPass,
 		Token:    tokenResponse,
 		Env:      env,
 	}, nil
@@ -69,10 +73,7 @@ func (us *UserService) GenerateToken(user *entity.User) (*response.Token, error)
 	accessToken := utils.GenerateAccessTokenFromClaims(accessClaims)
 	refreshToken := utils.GenerateRefreshTokenFromClaims(refreshClaims)
 
-	refreshTokenRecord, err := utils.GetRefreshTokenRedis(user.ID)
-	if err != nil && !errors.Is(err, redis.Nil) {
-		return nil, err
-	}
+	refreshTokenRecord, _ := utils.GetRefreshTokenRedis(user.ID)
 
 	// 旧记录加入 blacklist
 	if refreshTokenRecord != "" {

@@ -73,6 +73,15 @@ func SetRefreshTokenCookie(c *gin.Context, token string, age int) {
 	setCookies(c, constant.CookieRefreshToken, token, age, host)
 }
 
+func SetAccessTokenCookie(c *gin.Context, token string, age int) {
+	host, _, err := net.SplitHostPort(c.Request.Host)
+	if err != nil {
+		host = c.Request.Host
+	}
+
+	setCookies(c, constant.CookieAccessToken, token, age, host)
+}
+
 func RemoveRefreshTokenCookie(c *gin.Context) {
 	host, _, err := net.SplitHostPort(c.Request.Host)
 	if err != nil {
@@ -82,13 +91,30 @@ func RemoveRefreshTokenCookie(c *gin.Context) {
 	setCookies(c, constant.CookieRefreshToken, "", -1, host)
 }
 
+func RemoveAccessTokenCookie(c *gin.Context) {
+	host, _, err := net.SplitHostPort(c.Request.Host)
+	if err != nil {
+		host = c.Request.Host
+	}
+
+	setCookies(c, constant.CookieAccessToken, "", -1, host)
+}
+
 func GetRefreshTokenCookie(c *gin.Context) string {
-	token := c.Request.Header.Get(constant.CookieRefreshToken)
+	//token := c.Request.Header.Get(constant.CookieRefreshToken)
+	token, err := c.Cookie(constant.CookieRefreshToken)
+	if err != nil {
+		return ""
+	}
 	return token
 }
 
 func GetAccessTokenCookie(c *gin.Context) string {
-	token := c.Request.Header.Get(constant.CookieAccessToken)
+	//token := c.Request.Header.Get(constant.CookieAccessToken)
+	token, err := c.Cookie(constant.CookieAccessToken)
+	if err != nil {
+		return ""
+	}
 	return token
 }
 
@@ -110,37 +136,37 @@ func TokenJoinBlacklist(token string) error {
 	}).Error
 }
 
+// IsTokenBlacklisted 判断token是否在postgres黑名单中
 func IsTokenBlacklisted(token string) (bool, error) {
-	if err := global.GetDB().Where("token = ?", token).First(&entity.TokenBlacklist{}).Error; err == nil {
-		return true, nil
-	} else if errors.Is(err, gorm.ErrRecordNotFound) {
-		return false, nil
-	} else {
+	var count int64
+	err := global.GetDB().Model(&entity.TokenBlacklist{}).Where("token = ?", token).Count(&count).Error
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return false, err
 	}
+	return count > 0, nil
 }
 
 // ParseAccessToken 接收token返回claims
-func ParseAccessToken(token string) (*request.AccessClaims, error) {
+func ParseAccessToken(token string) (request.AccessClaims, error) {
 	claims, err := parseToken(token, &request.AccessClaims{}, global.GetConfig().JWT.AccessTokenSecret)
 	if err != nil {
-		return nil, err
+		return request.AccessClaims{}, err
 	}
 	if accessClaims, ok := claims.(*request.AccessClaims); ok {
-		return accessClaims, nil
+		return *accessClaims, nil
 	}
-	return nil, errors.New("invalid access claims")
+	return request.AccessClaims{}, errors.New("invalid access claims")
 }
 
-func ParseRefreshToken(token string) (*request.RefreshClaims, error) {
+func ParseRefreshToken(token string) (request.RefreshClaims, error) {
 	claims, err := parseToken(token, &request.RefreshClaims{}, global.GetConfig().JWT.RefreshTokenSecret)
 	if err != nil {
-		return nil, err
+		return request.RefreshClaims{}, err
 	}
 	if refreshClaims, ok := claims.(*request.RefreshClaims); ok {
-		return refreshClaims, nil
+		return *refreshClaims, nil
 	}
-	return nil, errors.New("invalid refresh claims")
+	return request.RefreshClaims{}, errors.New("invalid refresh claims")
 }
 
 func setCookies(c *gin.Context, name string, value string, age int, host string) {
@@ -153,7 +179,16 @@ func setCookies(c *gin.Context, name string, value string, age int, host string)
 
 func parseToken(input string, claims jwt.Claims, secret interface{}) (interface{}, error) {
 	token, err := jwt.ParseWithClaims(input, claims, func(token *jwt.Token) (interface{}, error) {
-		return secret, nil
+		switch s := secret.(type) {
+		case string:
+			return []byte(s), nil
+
+		case []byte:
+			return s, nil
+
+		default:
+			return nil, errors.New("invalid secret type")
+		}
 	})
 	// secret 可以判断 token 和 claims 是否相对应
 	if err != nil {

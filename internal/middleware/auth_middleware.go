@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"errors"
+	"fmt"
 	"strconv"
 
 	"blog.alphazer01214.top/internal/request"
@@ -15,12 +16,19 @@ import (
 // JWTAuthMiddleware JWT 认证中间件
 func JWTAuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		fmt.Println("JWT auth middleware")
 		accessToken := utils.GetAccessTokenCookie(c)
 		refreshToken := utils.GetRefreshTokenCookie(c)
 
-		if ok, err := utils.IsTokenBlacklisted(refreshToken); err != nil || !ok {
+		if yes, err := utils.IsTokenBlacklisted(refreshToken); err == nil && yes {
+			// 在 blacklist
+			fmt.Printf("blacklist token: %v \n", refreshToken)
 			utils.RemoveRefreshTokenCookie(c)
 			response.ErrorAuth(c, "Invalid token")
+			c.Abort()
+			return
+		} else if err != nil {
+			response.ErrorWithMsg(c, err.Error())
 			c.Abort()
 			return
 		}
@@ -30,6 +38,7 @@ func JWTAuthMiddleware() gin.HandlerFunc {
 		if err != nil {
 			// if access token expired
 			if errors.Is(err, jwt.ErrTokenExpired) {
+				fmt.Printf("expired access token: %v", accessToken)
 				refreshClaims, err := utils.ParseRefreshToken(refreshToken)
 				if err != nil {
 					utils.RemoveRefreshTokenCookie(c)
@@ -59,12 +68,13 @@ func JWTAuthMiddleware() gin.HandlerFunc {
 			}
 
 			utils.RemoveRefreshTokenCookie(c)
-			response.ErrorAuth(c, "Token access token")
+			response.ErrorAuth(c, "Authorization failed: "+err.Error())
 			c.Abort()
 			return
 		}
 
 		c.Set("claims", claims)
+		fmt.Printf("claims: %v\n", claims)
 		c.Next()
 	}
 }

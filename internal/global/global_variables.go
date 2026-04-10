@@ -29,7 +29,8 @@ func Init() {
 	DB = database.ConnectPostgres(Config.Postgres)
 	Log = logs.NewLogman("server", "debug", 0)
 	Redis = database.ConnectRedis(Config.Redis)
-	JWTBlacklist = make(map[string]bool)
+
+	_ = database.ClearTokenBlacklist(DB)
 }
 
 func GetConfig() *config.Config {

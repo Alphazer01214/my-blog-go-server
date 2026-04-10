@@ -1,5 +1,7 @@
 package request
 
+import "gorm.io/datatypes"
+
 type StandardAiRequest struct {
 	// Uid       uint            `json:"uid"`
 	//Env       *entity.EnvInfo `json:"env"`
@@ -24,17 +26,19 @@ type CreateAgentRequest struct {
 }
 
 type UpdateAgentRequest struct {
+	AgentId   uint              `json:"agent_id"`
 	AgentName string            `json:"agent_name"`
 	BaseUrl   string            `json:"base_url"`
 	ApiKey    string            `json:"api_key"`
 	Provider  string            `json:"provider"`
 	ModelName string            `json:"model_name"`
-	Prompts   map[string]string `json:"prompts"`
-	Memories  map[string]string `json:"memories"`
+	Prompts   datatypes.JSONMap `json:"prompts"`
+	Memories  datatypes.JSONMap `json:"memories"`
 	Activate  bool              `json:"activate"`
 }
 
 type InvokeAgentRequest struct {
+	AgentId   uint `json:"agent_id"`
 	AiOptions `json:"ai_options"`
 	SysPrompt string `json:"sys_prompt"`
 	UsrPrompt string `json:"usr_prompt"`

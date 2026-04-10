@@ -1,7 +1,6 @@
 ### create a public post
 POST http://localhost:2333/api/create
 Content-Type: application/json
-Authorization: tomori_token
 
 {
     "env": {
@@ -64,4 +63,4 @@ Authorization: tomori_token
 }
 
 ### get all posts
-GET http://localhost:2333/api/post/3
+GET http://localhost:2333/api/post/1

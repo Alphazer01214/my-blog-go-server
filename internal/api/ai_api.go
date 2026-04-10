@@ -17,7 +17,12 @@ type AiApi struct{}
 
 func (ap *AiApi) Create(c *gin.Context) {
 	ctx := c.Request.Context()
-	userId := c.GetUint("user_id")
+	cl, err := Authorize(c)
+	if err != nil {
+		response.ErrorWithMsg(c, err.Error())
+		return
+	}
+	userId := cl.Id
 	var req request.CreateAgentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.ErrorWithMsg(c, err.Error())
@@ -33,6 +38,7 @@ func (ap *AiApi) Create(c *gin.Context) {
 	}
 	if _, err := aiService.CreateAgent(ctx, agent); err != nil {
 		response.ErrorWithMsg(c, err.Error())
+		return
 	}
 
 	response.SuccessWithMsg(c, "create agent success")
@@ -45,8 +51,13 @@ func (ap *AiApi) Update(c *gin.Context) {
 		return
 	}
 	ctx := c.Request.Context()
-	userId := c.GetUint("user_id")
-	agentId := c.GetUint("agent_id")
+	cl, err := Authorize(c)
+	if err != nil {
+		response.ErrorWithMsg(c, err.Error())
+		return
+	}
+	userId := cl.Id
+	agentId := req.AgentId
 	newAgent := &entity.Agent{
 		ApiKey:    req.ApiKey,
 		Name:      req.AgentName,
@@ -60,6 +71,7 @@ func (ap *AiApi) Update(c *gin.Context) {
 
 	if _, err := aiService.UpdateAgent(ctx, userId, agentId, newAgent); err != nil {
 		response.ErrorWithMsg(c, err.Error())
+		return
 	} else {
 		response.SuccessWithMsg(c, "update agent success")
 	}
@@ -72,12 +84,13 @@ func (ap *AiApi) Invoke(c *gin.Context) {
 		return
 	}
 	userId := c.GetUint("user_id")
-	agentId := c.GetUint("agent_id")
+	agentId := req.AgentId
 	ctx := c.Request.Context()
 
 	rp, err := aiService.InvokeAgent(ctx, userId, agentId, &req)
 	if err != nil {
 		response.ErrorWithDetail(c, rp, "error")
+		return
 	}
 
 	response.SuccessWithDetail(c, rp, "success")
@@ -91,13 +104,20 @@ func (ap *AiApi) OnlineStreamChat(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	chatId := c.Query("chat_id")
-	userId := c.GetUint("user_id")
-	agentId := c.GetUint("agent_id")
+	//userId := c.GetUint("user_id")
+	cl, err := Authorize(c)
+	if err != nil {
+		response.ErrorWithMsg(c, err.Error())
+		return
+	}
+	userId := cl.Id
 	var req request.InvokeAgentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
+	agentId := req.AgentId
+
 	if chatId == "" {
 		chatId = utils.GenerateUUID()
 	}
@@ -123,8 +143,10 @@ func (ap *AiApi) OnlineStreamChat(c *gin.Context) {
 
 		return nil
 	}
-	if err := aiService.StreamChat(ctx, userId, agentId, chatId, &req, pushStream); err != nil {
+	if err := aiService.
+		StreamChat(ctx, userId, agentId, chatId, &req, pushStream); err != nil {
 		response.ErrorWithMsg(c, err.Error())
+		return
 	}
 
 	response.SuccessWithDetail(c, response.OnlineStreamChatResponse{
