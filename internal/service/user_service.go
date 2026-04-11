@@ -12,10 +12,6 @@ import (
 
 type UserService struct{}
 
-func NewUserService() UserService {
-	return UserService{}
-}
-
 func (us *UserService) Register(user *entity.User, env *entity.EnvInfo) (*response.Register, error) {
 	if us.isUsernameExist(user.Username) {
 		return nil, errors.New("username already exist")
@@ -63,7 +59,7 @@ func (us *UserService) Login(user *entity.User, env *entity.EnvInfo) (*response.
 
 func (us *UserService) GenerateToken(user *entity.User) (*response.Token, error) {
 	baseClaims := request.BaseClaims{
-		Id:       user.ID,
+		UserId:   user.ID,
 		Username: user.Username,
 		RoleType: user.Role,
 	}
@@ -127,13 +123,20 @@ func (us *UserService) GetAllUserInstance() (*response.UserQueryMultiple, error)
 	}, nil
 }
 
-func (us *UserService) UpdateUserProfile(user *entity.User, env *entity.EnvInfo) (*response.UserUpdate, error) {
+func (us *UserService) UpdateUserProfile(req request.UserUpdateRequest) (*response.UserUpdate, error) {
+	user := &entity.User{
+		Username: req.NewUsername,
+		Email:    req.NewEmail,
+		Phone:    req.NewPhone,
+		Bio:      req.NewBio,
+		Avatar:   req.NewAvatar,
+	}
 	if err := us.update(user); err != nil {
 		return nil, err
 	}
 
 	return &response.UserUpdate{
-		Env:      env,
+		Env:      req.Env,
 		UserInfo: user,
 	}, nil
 }

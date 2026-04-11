@@ -11,7 +11,7 @@ func SetupPostRouter(r *gin.Engine) {
 
 	public := r.Group("/api")
 	{
-		public.GET("/post/:id", postApi.QueryOneById)
+		public.GET("/post", postApi.Query)
 	}
 
 	protected := r.Group("/api")

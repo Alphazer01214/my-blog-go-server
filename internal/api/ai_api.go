@@ -22,7 +22,7 @@ func (ap *AiApi) Create(c *gin.Context) {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
-	userId := cl.Id
+	userId := cl.UserId
 	var req request.CreateAgentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.ErrorWithMsg(c, err.Error())
@@ -56,7 +56,7 @@ func (ap *AiApi) Update(c *gin.Context) {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
-	userId := cl.Id
+	userId := cl.UserId
 	agentId := req.AgentId
 	newAgent := &entity.Agent{
 		ApiKey:    req.ApiKey,
@@ -110,7 +110,7 @@ func (ap *AiApi) OnlineStreamChat(c *gin.Context) {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
-	userId := cl.Id
+	userId := cl.UserId
 	var req request.InvokeAgentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.ErrorWithMsg(c, err.Error())

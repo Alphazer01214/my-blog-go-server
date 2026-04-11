@@ -8,7 +8,7 @@ import (
 type User struct {
 	// gorm.Model 已经包含了 ID, CreatedAt, UpdatedAt, DeletedAt
 	gorm.Model
-	// Id        int    `json:"id"`
+	// UserId        int    `json:"id"`
 	Username string `gorm:"size:64;uniqueIndex;not null" json:"username"`
 	Email    string `gorm:"size:64" json:"email"`
 	Phone    string `gorm:"size:64" json:"phone"`

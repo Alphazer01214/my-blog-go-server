@@ -8,7 +8,6 @@ import (
 	"blog.alphazer01214.top/internal/response"
 	"blog.alphazer01214.top/internal/utils"
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 )
 
 type UserApi struct {
@@ -97,7 +96,13 @@ func (u *UserApi) UpdatePassword(c *gin.Context) {
 		return
 	}
 
-	rp, err := userService.UpdateUserPassword(req.Id, req.OldPassword, req.NewPassword, req.Env)
+	cl, err := Authorize(c)
+	if err != nil {
+		response.ErrorWithMsg(c, err.Error())
+	}
+	userId := cl.UserId
+
+	rp, err := userService.UpdateUserPassword(userId, req.OldPassword, req.NewPassword, req.Env)
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
@@ -113,14 +118,7 @@ func (u *UserApi) UpdateProfile(c *gin.Context) {
 		return
 	}
 
-	rp, err := userService.UpdateUserProfile(&entity.User{
-		Model:    gorm.Model{ID: req.Id},
-		Username: req.NewUsername,
-		Email:    req.NewEmail,
-		Phone:    req.NewPhone,
-		Bio:      req.NewBio,
-		Avatar:   req.NewAvatar,
-	}, req.Env)
+	rp, err := userService.UpdateUserProfile(req)
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return

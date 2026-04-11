@@ -54,7 +54,7 @@ func JWTAuthMiddleware() gin.HandlerFunc {
 					return
 				}
 				accessClaims := utils.GenerateAccessClaims(request.BaseClaims{
-					Id:       user.ID,
+					UserId:   user.ID,
 					Username: user.Username,
 					RoleType: user.Role,
 				})

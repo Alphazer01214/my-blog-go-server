@@ -18,7 +18,7 @@ import (
 
 func GenerateBaseClaims(id uint, username string, role constant.RoleType) request.BaseClaims {
 	return request.BaseClaims{
-		Id:       id,
+		UserId:   id,
 		Username: username,
 		RoleType: role,
 	}
@@ -44,7 +44,7 @@ func GenerateRefreshClaims(base request.BaseClaims) request.RefreshClaims {
 	)
 
 	return request.RefreshClaims{
-		Id: base.Id,
+		Id: base.UserId,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    global.GetConfig().JWT.Issuer,
 			ExpiresAt: jwt.NewNumericDate(expireAt),

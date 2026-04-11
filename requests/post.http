@@ -1,25 +1,21 @@
+### 提示
+### 先执行 `requests/auth.http` 里的登录请求，
+### 然后把返回的 `access-token` 和 `refresh-token` 放到下面的 Cookie 里。
+
+@baseUrl = http://localhost:2333
+@accessToken = your_access_token
+@refreshToken = your_refresh_token
+
 ### create a public post
-POST http://localhost:2333/api/create
+POST {{baseUrl}}/api/create
 Content-Type: application/json
+Cookie: access-token={{accessToken}}; refresh-token={{refreshToken}}
 
 {
-    "env": {
+  "env": {
     "ipv6": "test",
     "device_info": "test",
     "os": "Windows"
-  },
-  "creator": {
-    "ID": 1,
-    "CreatedAt": "2026-03-16T23:20:31.937062+08:00",
-    "UpdatedAt": "2026-03-18T14:18:39.89376+08:00",
-    "DeletedAt": null,
-    "username": "takamatsu_tomori",
-    "email": "alphazer01214@gmail.com",
-    "phone": "114514",
-    "bio": "I'm takamatsu_tomori",
-    "avatar": "https://cdn.discordapp.com/avatars/1/1.png",
-    "admin": false,
-    "banned": false
   },
   "title": "test",
   "content": "test",
@@ -29,30 +25,16 @@ Content-Type: application/json
   "cover": "https://cdn.discordapp.com/avatars/1/1.png"
 }
 
-
 ### create a private post
-POST http://localhost:2333/api/create
+POST {{baseUrl}}/api/create
 Content-Type: application/json
-Authorization: tomori_token
+Cookie: access-token={{accessToken}}; refresh-token={{refreshToken}}
 
 {
   "env": {
     "ipv6": "test",
     "device_info": "test",
     "os": "Windows"
-  },
-  "creator": {
-    "ID": 1,
-    "CreatedAt": "2026-03-16T23:20:31.937062+08:00",
-    "UpdatedAt": "2026-03-18T14:18:39.89376+08:00",
-    "DeletedAt": null,
-    "username": "takamatsu_tomori",
-    "email": "alphazer01214@gmail.com",
-    "phone": "114514",
-    "bio": "I'm takamatsu_tomori",
-    "avatar": "https://cdn.discordapp.com/avatars/1/1.png",
-    "admin": false,
-    "banned": false
   },
   "title": "private test",
   "content": "private private private",
@@ -62,5 +44,18 @@ Authorization: tomori_token
   "cover": "https://cdn.discordapp.com/avatars/1/1.png"
 }
 
+### get one public post by id
+GET {{baseUrl}}/api/post?id=1
+
+### get one private post by id (must be author and logged in)
+GET {{baseUrl}}/api/post?id=2
+Cookie: access-token={{accessToken}}; refresh-token={{refreshToken}}
+
 ### get all posts
-GET http://localhost:2333/api/post/1
+GET {{baseUrl}}/api/post
+
+### get limited posts
+GET {{baseUrl}}/api/post?max_query=10
+
+### update post
+### 当前项目里 `Update` 处理函数已存在，但还没有对应路由，因此这一项暂时不能直接测试。

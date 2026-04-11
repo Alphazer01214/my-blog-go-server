@@ -280,11 +280,11 @@ Authorization: Bearer <access_token>
 
 ### 8. 查询文章详情
 
-**接口**: `GET /api/post/:id`
+**接口**: `GET /api/post?id={id}`
 
 **认证**: 不需要
 
-**路径参数**:
+**查询参数**:
 - `id`: 文章 ID (uint)
 
 **响应示例**:
@@ -292,6 +292,12 @@ Authorization: Bearer <access_token>
 {
   "code": 200,
   "data": {
+    "env": {
+      "ipv4": "127.0.0.1",
+      "ipv6": "",
+      "os": "Windows",
+      "device_info": "Chrome"
+    },
     "id": 1,
     "user_id": 1,
     "title": "文章标题",
@@ -299,6 +305,10 @@ Authorization: Bearer <access_token>
     "category": "技术",
     "keywords": "Go,后端,API",
     "content": "文章内容...",
+    "view_count": 123,
+    "comment": 5,
+    "likes": 20,
+    "dislikes": 1,
     "public": true,
     "created_at": "2024-01-01T00:00:00Z",
     "updated_at": "2024-01-01T00:00:00Z"
@@ -307,13 +317,58 @@ Authorization: Bearer <access_token>
 }
 ```
 
-**注意**: 仅返回公开的文章 (`public: true`)
+**注意**: 详情接口仅允许公开文章查看；非公开文章只允许作者本人访问。
+
+---
+
+### 8.1 查询文章列表
+
+**接口**: `GET /api/post?max_query={max_query}`
+
+**认证**: 不需要
+
+**查询参数**:
+- `max_query`: 最多返回的文章数量 (uint，可选)
+
+**响应示例**:
+```json
+{
+  "code": 200,
+  "data": [
+    {
+      "env": {
+        "ipv4": "127.0.0.1",
+        "ipv6": "",
+        "os": "Windows",
+        "device_info": "Chrome"
+      },
+      "id": 1,
+      "user_id": 1,
+      "title": "文章标题",
+      "cover": "https://example.com/cover.jpg",
+      "category": "技术",
+      "keywords": "Go,后端,API",
+      "content": "文章内容...",
+      "view_count": 123,
+      "comment": 5,
+      "likes": 20,
+      "dislikes": 1,
+      "public": true,
+      "created_at": "2024-01-01T00:00:00Z",
+      "updated_at": "2024-01-01T00:00:00Z"
+    }
+  ],
+  "msg": "query success"
+}
+```
+
+**说明**: 当前实现先读取全部文章，再按 `max_query` 在 API 层截断；如果不传 `max_query`，则返回全部文章。
 
 ---
 
 ### 9. 更新文章
 
-**接口**: `POST /api/update` (待实现)
+**接口**: `POST /api/update`（当前代码中已有处理函数，但路由尚未挂载）
 
 **认证**: 需要 JWT Token
 
@@ -573,7 +628,7 @@ Authorization: Bearer <your_access_token>
 
 1. **密码安全**: 当前版本密码以明文传输，建议在生产环境使用 HTTPS
 2. **环境变量**: 部分接口支持 `env` 参数传递环境信息
-3. **文章可见性**: 查询文章接口只返回 `public: true` 的文章
+3. **文章可见性**: 详情接口仅允许公开文章查看，非公开文章只允许作者本人访问；列表接口当前不做可见性过滤
 4. **流式对话**: `/api/chat` 接口使用 SSE 协议，需要客户端支持事件流处理
 5. **Agent 激活**: 更新 Agent 时可设置 `activate` 字段控制是否激活该 Agent
 

@@ -10,26 +10,26 @@ type UserRegisterRequest struct {
 }
 
 type UserUpdateRequest struct {
-	Env         *entity.EnvInfo `json:"env"`
-	Id          uint            `json:"id"`
-	NewUsername string          `json:"new_username"`
-	NewEmail    string          `json:"new_email"`
-	NewPhone    string          `json:"new_phone"`
-	NewBio      string          `json:"new_bio"`
-	NewAvatar   string          `json:"new_avatar"`
+	Env *entity.EnvInfo `json:"env"`
+	//Id          uint            `json:"id" binding:"required"`
+	NewUsername string `json:"new_username"`
+	NewEmail    string `json:"new_email"`
+	NewPhone    string `json:"new_phone"`
+	NewBio      string `json:"new_bio"`
+	NewAvatar   string `json:"new_avatar"`
 }
 
 type UserUpdatePasswordRequest struct {
-	Env         *entity.EnvInfo `json:"env"`
-	Id          uint            `json:"id"`
-	OldPassword string          `json:"old_password"`
-	NewPassword string          `json:"new_password"`
+	Env *entity.EnvInfo `json:"env"`
+	//Id          uint            `json:"id" binding:"required"`
+	OldPassword string `json:"old_password"`
+	NewPassword string `json:"new_password"`
 }
 
 type UserLoginRequest struct {
 	Env *entity.EnvInfo `json:"env"`
 	// Info     *entity.UserEnvInfo `json:"info"`
-	// Id       uint                `json:"id"`
+	// UserId       uint                `json:"id"`
 	Username string `json:"username" binding:"required"`
 	// LoginType  constant.LoginType `json:"login_type"`
 	// OS         string             `json:"os"`
@@ -40,6 +40,6 @@ type UserLoginRequest struct {
 }
 
 //type UserQueryRequest struct {
-//	Id      uint   `json:"id"`
+//	UserId      uint   `json:"id"`
 //	Keyword string `json:"keyword"`
 //}

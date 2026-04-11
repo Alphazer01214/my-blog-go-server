@@ -6,7 +6,7 @@ import (
 )
 
 type BaseClaims struct {
-	Id       uint
+	UserId   uint
 	Username string
 	RoleType constant.RoleType
 }
