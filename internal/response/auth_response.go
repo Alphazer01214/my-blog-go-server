@@ -7,13 +7,10 @@ type Register struct {
 	Username string          `json:"username"`
 }
 
-// Login 登录响应结构
 type Login struct {
-	Env *entity.EnvInfo `json:"env"`
-	// Token access token
-	Token *Token `json:"token"`
-	// UserInfo is entity.User without password, therefore do not use pointer
-	UserInfo entity.User `json:"user_info"`
+	Env      *entity.EnvInfo `json:"env"`
+	Token    *Token          `json:"token"`
+	UserInfo UserInfo        `json:"user_info"`
 }
 
 type Token struct {

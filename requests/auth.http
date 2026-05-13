@@ -1,5 +1,7 @@
+@baseUrl = http://localhost:2333
+
 ### login
-POST http://localhost:2333/api/auth/login
+POST {{baseUrl}}/api/auth/login
 Content-Type: application/json
 
 {
@@ -13,7 +15,7 @@ Content-Type: application/json
 }
 
 ### login another
-POST http://localhost:2333/api/auth/login
+POST {{baseUrl}}/api/auth/login
 Content-Type: application/json
 
 {
@@ -27,7 +29,7 @@ Content-Type: application/json
 }
 
 ### register
-POST http://localhost:2333/api/auth/register
+POST {{baseUrl}}/api/auth/register
 Content-Type: application/json
 
 {
@@ -41,7 +43,7 @@ Content-Type: application/json
 }
 
 ### register another
-POST http://localhost:2333/api/auth/register
+POST {{baseUrl}}/api/auth/register
 Content-Type: application/json
 
 {
@@ -55,7 +57,7 @@ Content-Type: application/json
 }
 
 ### logout
-POST http://localhost:2333/api/auth/logout
+POST {{baseUrl}}/api/auth/logout
 Content-Type: application/json
-#Authorization: tomori_token
+Cookie: access-token={{accessToken}}; refresh-token={{refreshToken}}
 

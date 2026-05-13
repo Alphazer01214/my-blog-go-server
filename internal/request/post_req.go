@@ -1,14 +1,18 @@
 package request
 
-import "blog.alphazer01214.top/internal/entity"
+import (
+	"blog.alphazer01214.top/internal/entity"
+
+	"gorm.io/datatypes"
+)
 
 type PostCreateRequest struct {
 	Env      entity.EnvInfo `json:"env"`
-	UserId   uint           `json:"user_id"`
 	Title    string         `json:"title"`
 	Cover    string         `json:"cover"`
 	Category string         `json:"category"`
-	Keywords string         `json:"keywords"`
+	Tags     datatypes.JSON `json:"tags"`
+	Keywords datatypes.JSON `json:"keywords"`
 	Content  string         `json:"content"`
 	Public   bool           `json:"public"`
 }
@@ -19,7 +23,12 @@ type PostUpdateRequest struct {
 	Title    string         `json:"title"`
 	Cover    string         `json:"cover"`
 	Category string         `json:"category"`
-	Keywords string         `json:"keywords"`
+	Tags     datatypes.JSON `json:"tags"`
+	Keywords datatypes.JSON `json:"keywords"`
 	Content  string         `json:"content"`
 	Public   bool           `json:"public"`
+}
+
+type PostActionRequest struct {
+	PostId uint `json:"post_id" binding:"required"`
 }

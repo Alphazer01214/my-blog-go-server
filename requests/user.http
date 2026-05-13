@@ -1,10 +1,35 @@
+### 提示
+### 先执行 `requests/auth.http` 里的登录请求，
+### 然后把返回的 `access-token` 和 `refresh-token` 放到下面的变量里。
+###
+### 所有用户信息接口统一使用 UserInfo 结构体响应：
+### {
+###   "user_id": 1,
+###   "username": "takamatsu_tomori",
+###   "email": "...",
+###   "phone": "...",
+###   "bio": "...",
+###   "avatar": "...",
+###   "admin": false,
+###   "role": 0,
+###   "post_count": N,
+###   "comment_count": N
+### }
+
+@baseUrl = http://localhost:2333
+@accessToken = your_access_token
+@refreshToken = your_refresh_token
+
+### ------------------------------------------------------------
+### 需要认证的接口
+### ------------------------------------------------------------
+
 ### update password
-POST http://localhost:2333/api/update_password
+POST {{baseUrl}}/api/update_password
 Content-Type: application/json
-#Authorization: tomori_token
+Cookie: access-token={{accessToken}}; refresh-token={{refreshToken}}
 
 {
-  "id": 1,
   "old_password": "114514",
   "new_password": "114514",
   "env": {
@@ -15,12 +40,11 @@ Content-Type: application/json
 }
 
 ### update profile
-POST http://localhost:2333/api/update_profile
+POST {{baseUrl}}/api/update_profile
 Content-Type: application/json
-#Authorization: tomori_token
+Cookie: access-token={{accessToken}}; refresh-token={{refreshToken}}
 
 {
-  "id": 1,
   "new_username": "takamatsu_tomori",
   "new_email": "alphazer01214@gmail.com",
   "new_avatar": "https://cdn.discordapp.com/avatars/1/1.png",
@@ -33,30 +57,22 @@ Content-Type: application/json
   }
 }
 
+### current user (me)
+GET {{baseUrl}}/api/me
+Cookie: access-token={{accessToken}}; refresh-token={{refreshToken}}
+
+### ------------------------------------------------------------
+### 公开接口
+### ------------------------------------------------------------
+
 ### query one user
-GET http://localhost:2333/api/user/1
+GET {{baseUrl}}/api/user/1
 
-### create agent
-POST http://localhost:2333/api/create_agent
-Content-Type: application/json
+### query all users
+GET {{baseUrl}}/api/all_users
 
-{
-  "agent_name": "tomorin",
-  "base_url": "localhost:11434",
-  "api_key": "1145141919810",
-  "provider": "ollama",
-  "model_name": "huihui_ai/qwen3.5-abliterated:4B"
-}
+### query user's posts
+GET {{baseUrl}}/api/user/1/posts?page=1&page_size=20
 
-### update agent
-POST http://localhost:2333/api/update_agent
-Content-Type: application/json
-
-{
-  "agent_id": 1,
-  "agent_name": "tomorin",
-  "base_url": "http://localhost:11434",
-    "api_key": "1145141919810",
-  "provider": "ollama",
-  "model_name": "huihui_ai/qwen3.5-abliterated:4B"
-}
+### query user's comments
+GET {{baseUrl}}/api/user/1/comments?page=1&page_size=20

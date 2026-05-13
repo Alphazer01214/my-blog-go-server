@@ -24,10 +24,9 @@ func (u *UserApi) Register(c *gin.Context) {
 		response.Error(c)
 		return
 	}
-	//pass := utils.EncryptPassword(req.Password)
 	usr := &entity.User{
 		Username: req.Username,
-		Password: req.Password, // 明文
+		Password: req.Password,
 	}
 	rp, err := userService.Register(usr, req.Env)
 	if err != nil {
@@ -54,20 +53,13 @@ func (u *UserApi) Login(c *gin.Context) {
 		return
 	}
 
-	// 成功登录，把refresh token 和 access token 放进cookies
 	utils.SetRefreshTokenCookie(c, loginResponse.Token.RefreshToken, loginResponse.Token.RefreshTokenExpireTime)
 	utils.SetAccessTokenCookie(c, loginResponse.Token.AccessToken, loginResponse.Token.AccessTokenExpireTime)
-	c.Set("user_id", loginResponse.UserInfo.ID)
+	c.Set("user_id", loginResponse.UserInfo.UserId)
 	response.SuccessWithDetail(c, loginResponse, "login success")
 }
 
 func (u *UserApi) Logout(c *gin.Context) {
-	// 从请求头获取 token
-	//token := c.GetHeader("Authorization")
-	//if token == "" {
-	//	response.ErrorWithMsg(c, "token is required")
-	//	return
-	//}
 	refreshToken := utils.GetRefreshTokenCookie(c)
 	accessToken := utils.GetAccessTokenCookie(c)
 	if refreshToken == "" {
@@ -77,7 +69,6 @@ func (u *UserApi) Logout(c *gin.Context) {
 	if accessToken == "" {
 		response.ErrorWithMsg(c, "not login yet")
 	}
-	// 将 token 加入黑名单
 	if err := utils.TokenJoinBlacklist(refreshToken); err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
@@ -99,6 +90,7 @@ func (u *UserApi) UpdatePassword(c *gin.Context) {
 	cl, err := Authorize(c)
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
+		return
 	}
 	userId := cl.UserId
 
@@ -117,13 +109,32 @@ func (u *UserApi) UpdateProfile(c *gin.Context) {
 		response.Error(c)
 		return
 	}
+	cl, err := Authorize(c)
+	if err != nil {
+		response.ErrorWithMsg(c, err.Error())
+		return
+	}
 
-	rp, err := userService.UpdateUserProfile(req)
+	rp, err := userService.UpdateUserProfile(cl.UserId, req)
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
 	response.SuccessWithDetail(c, rp, "UserUpdate profile successful")
+}
+
+func (u *UserApi) CurrentUser(c *gin.Context) {
+	cl, err := Authorize(c)
+	if err != nil {
+		response.ErrorWithMsg(c, err.Error())
+		return
+	}
+	info, err := userService.GetUserInfoById(cl.UserId)
+	if err != nil {
+		response.ErrorWithMsg(c, err.Error())
+		return
+	}
+	response.SuccessWithDetail(c, info, "Query current user successful")
 }
 
 func (u *UserApi) QueryUserById(c *gin.Context) {
@@ -132,10 +143,59 @@ func (u *UserApi) QueryUserById(c *gin.Context) {
 		response.ErrorWithMsg(c, "invalid id")
 		return
 	}
-	rp, err := userService.GetUserById(uint(id))
+	rp, err := userService.GetUserInfoById(uint(id))
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
 	response.SuccessWithDetail(c, rp, "Query user by id successful")
+}
+
+func (u *UserApi) GetAllUsers(c *gin.Context) {
+	scnt := c.Query("tok_k")
+	_, err := strconv.ParseInt(scnt, 10, 64)
+	if err != nil {
+	}
+	usrInfo, err := userService.GetAllUserInfo()
+	if err != nil {
+		response.ErrorWithMsg(c, err.Error())
+		return
+	}
+	response.SuccessWithDetail(c, usrInfo, "Query all users successful")
+}
+
+func (u *UserApi) QueryUserPosts(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		response.ErrorWithMsg(c, "invalid user id")
+		return
+	}
+	page, pageSize := parsePagination(c)
+	posts, err := userService.GetPostsByUser(uint(id), page, pageSize)
+	if err != nil {
+		response.ErrorWithMsg(c, err.Error())
+		return
+	}
+	response.SuccessWithDetail(c, posts, "query user posts success")
+}
+
+func (u *UserApi) QueryUserComments(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		response.ErrorWithMsg(c, "invalid user id")
+		return
+	}
+	page, pageSize := parsePagination(c)
+	viewerId := GetUserId(c)
+	comments, total, err := userService.GetCommentsByUser(uint(id), viewerId, page, pageSize)
+	if err != nil {
+		response.ErrorWithMsg(c, err.Error())
+		return
+	}
+	response.SuccessWithDetail(c, response.CommentList{
+		Items:    comments,
+		Page:     page,
+		PageSize: pageSize,
+		Total:    total,
+	}, "query user comments success")
 }

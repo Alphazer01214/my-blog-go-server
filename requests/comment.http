@@ -1,0 +1,94 @@
+### 提示
+### 先执行 `requests/auth.http` 里的登录请求，
+### 然后把返回的 `access-token` 和 `refresh-token` 放到下面的变量里。
+###
+### 评论响应中 author 字段使用统一的 UserInfo 结构体。
+
+@baseUrl = http://localhost:2333
+@accessToken = your_access_token
+@refreshToken = your_refresh_token
+
+### ------------------------------------------------------------
+### 需要认证的接口
+### ------------------------------------------------------------
+
+### create root comment (top-level)
+POST {{baseUrl}}/api/comment
+Content-Type: application/json
+Cookie: access-token={{accessToken}}; refresh-token={{refreshToken}}
+
+{
+  "env": {
+    "ipv6": "test",
+    "device_info": "test",
+    "os": "Windows"
+  },
+  "post_id": 1,
+  "content": "This is a root comment."
+}
+
+### create reply to root comment
+POST {{baseUrl}}/api/comment
+Content-Type: application/json
+Cookie: access-token={{accessToken}}; refresh-token={{refreshToken}}
+
+{
+  "env": {
+    "ipv6": "test",
+    "device_info": "test",
+    "os": "Windows"
+  },
+  "post_id": 1,
+  "root_comment_id": 1,
+  "parent_comment_id": 1,
+  "content": "This is a reply to the root comment."
+}
+
+### create nested reply
+POST {{baseUrl}}/api/comment
+Content-Type: application/json
+Cookie: access-token={{accessToken}}; refresh-token={{refreshToken}}
+
+{
+  "env": {
+    "ipv6": "test",
+    "device_info": "test",
+    "os": "Windows"
+  },
+  "post_id": 1,
+  "root_comment_id": 1,
+  "parent_comment_id": 2,
+  "content": "This is a nested reply."
+}
+
+### like a comment (toggle)
+POST {{baseUrl}}/api/comment/like
+Content-Type: application/json
+Cookie: access-token={{accessToken}}; refresh-token={{refreshToken}}
+
+{
+  "comment_id": 1
+}
+
+### dislike a comment (toggle)
+POST {{baseUrl}}/api/comment/dislike
+Content-Type: application/json
+Cookie: access-token={{accessToken}}; refresh-token={{refreshToken}}
+
+{
+  "comment_id": 1
+}
+
+### delete comment (must be author)
+DELETE {{baseUrl}}/api/comment/1
+Cookie: access-token={{accessToken}}; refresh-token={{refreshToken}}
+
+### ------------------------------------------------------------
+### 公开接口
+### ------------------------------------------------------------
+
+### list root comments for a post (with pagination)
+GET {{baseUrl}}/api/post/1/comments?page=1&page_size=20
+
+### list replies of a comment (with pagination)
+GET {{baseUrl}}/api/comments/1/replies?page=1&page_size=20

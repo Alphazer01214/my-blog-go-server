@@ -3,18 +3,24 @@ package entity
 import (
 	"time"
 
+	"gorm.io/datatypes"
 	"gorm.io/gorm"
 )
 
 type Post struct {
-	gorm.Model
-	EnvInfo  `json:"env"`
-	Title    string `json:"title"`
-	Cover    string `json:"cover"`
-	UserId   uint   `json:"user_id"`
-	Category string `json:"category"`
-	Keywords string `json:"keywords"`
-	Content  string `json:"content"`
+	ID        uint           `gorm:"primaryKey" json:"id"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
+	EnvInfo   `json:"env"`
+	Title     string         `gorm:"type:varchar(255)" json:"title"`
+	Cover     string         `json:"cover"`
+	UserId    uint           `json:"user_id"`
+	Tags      datatypes.JSON `json:"tags"`
+	Category  string         `json:"category"`
+	Keywords  datatypes.JSON `json:"keywords"`
+	Content   string         `gorm:"type:text" json:"content"`
+	//ContentNodes datatypes.JSONArrayExpression
 
 	ViewCount    int `json:"view_count"`
 	CommentCount int `json:"comment_count"`
@@ -24,20 +30,22 @@ type Post struct {
 	Public bool `json:"public"`
 }
 
-type PostComment struct {
-	UserId   uint `json:"user_id"`
-	EnvInfo  `json:"env"`
-	Location string `json:"location"`
-	Content  string `json:"content"`
-}
-
 type Like struct {
-	UserId uint `json:"user_id"`
-	LikeAt time.Time
+	UserId uint      `json:"user_id" gorm:"uniqueKey"`
+	LikeAt time.Time `json:"like_at" gorm:"autoCreateTime"`
 }
 
-// Dislike should not in any response
 type Dislike struct {
-	UserId    uint `json:"user_id"`
-	DislikeAt time.Time
+	UserId    uint      `json:"user_id" gorm:"uniqueKey"`
+	DislikeAt time.Time `json:"dislike_at" gorm:"autoCreateTime"`
+}
+
+type PostLike struct {
+	Like
+	PostId uint `json:"post_id" gorm:"uniqueKey"`
+}
+
+type PostDislike struct {
+	Dislike
+	PostId uint `json:"post_id" gorm:"uniqueKey"`
 }

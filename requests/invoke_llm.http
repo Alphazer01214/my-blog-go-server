@@ -1,5 +1,99 @@
-POST http://localhost:2333/api/chat
+### 提示
+### 先执行 `requests/auth.http` 里的登录请求，
+### 然后把返回的 `access-token` 和 `refresh-token` 放到下面的变量里。
+
+@baseUrl = http://localhost:2333
+@accessToken = your_access_token
+@refreshToken = your_refresh_token
+
+### ============================================================
+### Agent 管理接口
+### ============================================================
+
+### create agent
+POST {{baseUrl}}/api/create_agent
 Content-Type: application/json
+Cookie: access-token={{accessToken}}; refresh-token={{refreshToken}}
+
+{
+  "agent_name": "tomorin",
+  "base_url": "http://localhost:11434",
+  "api_key": "1145141919810",
+  "provider": "ollama",
+  "model_name": "huihui_ai/qwen3.5-abliterated:4B"
+}
+
+### update agent
+POST {{baseUrl}}/api/update_agent
+Content-Type: application/json
+Cookie: access-token={{accessToken}}; refresh-token={{refreshToken}}
+
+{
+  "agent_id": 1,
+  "agent_name": "tomorin",
+  "base_url": "http://localhost:11434",
+  "api_key": "1145141919810",
+  "provider": "ollama",
+  "model_name": "huihui_ai/qwen3.5-abliterated:4B",
+  "prompts": {},
+  "memories": {},
+  "activate": true
+}
+
+### list agents (canonical)
+GET {{baseUrl}}/api/agents
+Cookie: access-token={{accessToken}}; refresh-token={{refreshToken}}
+
+### list agents (compat)
+GET {{baseUrl}}/api/agent/list
+Cookie: access-token={{accessToken}}; refresh-token={{refreshToken}}
+
+### query one agent
+GET {{baseUrl}}/api/agent/1
+Cookie: access-token={{accessToken}}; refresh-token={{refreshToken}}
+
+### ============================================================
+### LLM 调用接口
+### ============================================================
+
+### invoke agent (non-stream)
+POST {{baseUrl}}/api/invoke_agent
+Content-Type: application/json
+Cookie: access-token={{accessToken}}; refresh-token={{refreshToken}}
+
+{
+  "agent_id": 1,
+  "ai_options": {
+    "temperature": 0.7,
+    "thinking": false,
+    "search_internet": false
+  },
+  "sys_prompt": "You are a helpful assistant.",
+  "usr_prompt": "What is Go language?"
+}
+
+### chat (SSE stream)
+POST {{baseUrl}}/api/chat
+Content-Type: application/json
+Cookie: access-token={{accessToken}}; refresh-token={{refreshToken}}
+
+{
+  "agent_id": 1,
+  "ai_options": {
+    "temperature": 0.7,
+    "thinking": false,
+    "search_internet": false
+  },
+  "sys_prompt": "你是一个一个一个一个",
+  "usr_prompt": "德川和我修院是谁"
+}
+
+### chat (continue with chat_id)
+### 先从上一个 SSE 首包 data 中取 chat_id 填入
+@chatId = paste_chat_id_here
+POST {{baseUrl}}/api/chat?chat_id={{chatId}}
+Content-Type: application/json
+Cookie: access-token={{accessToken}}; refresh-token={{refreshToken}}
 
 {
   "agent_id": 1,
@@ -9,5 +103,17 @@ Content-Type: application/json
     "search_internet": false
   },
   "sys_prompt": "You are a keyboard politician.",
-  "usr_prompt": "Is Xi Jinping the president of China?"
+  "usr_prompt": "Continue this conversation."
 }
+
+### ============================================================
+### 聊天会话管理接口
+### ============================================================
+
+### list chat sessions (with pagination)
+GET {{baseUrl}}/api/chats?page=1&page_size=20
+Cookie: access-token={{accessToken}}; refresh-token={{refreshToken}}
+
+### get chat session
+GET {{baseUrl}}/api/chat/{{chatId}}
+Cookie: access-token={{accessToken}}; refresh-token={{refreshToken}}

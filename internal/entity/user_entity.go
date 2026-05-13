@@ -1,13 +1,19 @@
 package entity
 
 import (
+	"time"
+
 	"blog.alphazer01214.top/internal/constant"
 	"gorm.io/gorm"
 )
 
 type User struct {
 	// gorm.Model 已经包含了 ID, CreatedAt, UpdatedAt, DeletedAt
-	gorm.Model
+	//gorm.Model
+	ID        uint `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	DeletedAt gorm.DeletedAt `gorm:"index"`
 	// UserId        int    `json:"id"`
 	Username string `gorm:"size:64;uniqueIndex;not null" json:"username"`
 	Email    string `gorm:"size:64" json:"email"`

@@ -3,6 +3,8 @@ package cmd
 import "flag"
 
 func InitFlag() {
+	flag.Parse()
+
 	postgresMigrate := flag.Bool("migrate", true, "migrate database")
 
 	if *postgresMigrate {

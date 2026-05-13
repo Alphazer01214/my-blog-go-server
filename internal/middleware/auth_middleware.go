@@ -46,7 +46,7 @@ func JWTAuthMiddleware() gin.HandlerFunc {
 					c.Abort()
 					return
 				}
-				user, err := service.Service.UserService.GetUserInstanceById(refreshClaims.Id)
+				user, err := service.Service.UserService.GetUserInfoById(refreshClaims.Id)
 				if err != nil {
 					utils.RemoveRefreshTokenCookie(c)
 					response.ErrorAuth(c, "User not exists")
@@ -54,7 +54,7 @@ func JWTAuthMiddleware() gin.HandlerFunc {
 					return
 				}
 				accessClaims := utils.GenerateAccessClaims(request.BaseClaims{
-					UserId:   user.ID,
+					UserId:   user.UserId,
 					Username: user.Username,
 					RoleType: user.Role,
 				})
@@ -63,6 +63,7 @@ func JWTAuthMiddleware() gin.HandlerFunc {
 				c.Header("access-expire-at", strconv.FormatInt(accessClaims.ExpiresAt.Unix(), 10))
 
 				c.Set("claims", accessClaims)
+				c.Set("user_id", accessClaims.UserId)
 				c.Next()
 				return
 			}
@@ -74,6 +75,7 @@ func JWTAuthMiddleware() gin.HandlerFunc {
 		}
 
 		c.Set("claims", claims)
+		c.Set("user_id", claims.UserId)
 		fmt.Printf("claims: %v\n", claims)
 		c.Next()
 	}

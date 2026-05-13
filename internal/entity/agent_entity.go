@@ -1,12 +1,17 @@
 package entity
 
 import (
+	"time"
+
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 )
 
 type Agent struct {
-	gorm.Model
+	ID        uint           `gorm:"primaryKey" json:"id"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
 	// Uid: owner's id
 	UserId uint `gorm:"uniqueKey" json:"user_id"`
 
@@ -32,9 +37,23 @@ type Agent struct {
 
 type Session struct {
 	UUID         string        `json:"uuid"`
+	UserId       uint          `json:"user_id"`
+	AgentId      uint          `json:"agent_id"`
 	ChatMessages []ChatMessage `json:"chat_messages"`
 	CreateAt     int64         `json:"create_at"`
 	UpdateAt     int64         `json:"update_at"`
+}
+
+type ChatSession struct {
+	ID        uint           `gorm:"primaryKey" json:"id"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
+	UUID      string         `gorm:"uniqueIndex" json:"uuid"`
+	UserId    uint           `gorm:"index" json:"user_id"`
+	AgentId   uint           `json:"agent_id"`
+	Title     string         `gorm:"type:varchar(255)" json:"title"`
+	Messages  datatypes.JSON `json:"messages"`
 }
 
 type ChatMessage struct {

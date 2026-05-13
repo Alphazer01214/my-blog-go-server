@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 
 	"blog.alphazer01214.top/internal/entity"
 	"blog.alphazer01214.top/internal/request"
@@ -34,6 +35,7 @@ func (ap *AiApi) Create(c *gin.Context) {
 		Name:      req.AgentName,
 		Provider:  req.Provider,
 		BaseUrl:   req.BaseUrl,
+		ApiKey:    req.ApiKey,
 		ModelName: req.ModelName,
 	}
 	if _, err := aiService.CreateAgent(ctx, agent); err != nil {
@@ -83,7 +85,12 @@ func (ap *AiApi) Invoke(c *gin.Context) {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
-	userId := c.GetUint("user_id")
+	cl, err := Authorize(c)
+	if err != nil {
+		response.ErrorWithMsg(c, err.Error())
+		return
+	}
+	userId := cl.UserId
 	agentId := req.AgentId
 	ctx := c.Request.Context()
 
@@ -96,15 +103,83 @@ func (ap *AiApi) Invoke(c *gin.Context) {
 	response.SuccessWithDetail(c, rp, "success")
 }
 
+func (ap *AiApi) QueryAgents(c *gin.Context) {
+	cl, err := Authorize(c)
+	if err != nil {
+		response.ErrorWithMsg(c, err.Error())
+		return
+	}
+	agents, err := aiService.QueryAgentsByUser(c.Request.Context(), cl.UserId)
+	if err != nil {
+		response.ErrorWithMsg(c, err.Error())
+		return
+	}
+	response.SuccessWithDetail(c, agents, "query agents success")
+}
+
+func (ap *AiApi) QueryAgentById(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		response.ErrorWithMsg(c, "invalid id")
+		return
+	}
+	cl, err := Authorize(c)
+	if err != nil {
+		response.ErrorWithMsg(c, err.Error())
+		return
+	}
+	agent, err := aiService.QueryAgentById(c.Request.Context(), cl.UserId, uint(id))
+	if err != nil {
+		response.ErrorWithMsg(c, err.Error())
+		return
+	}
+	response.SuccessWithDetail(c, agent, "query agent success")
+}
+
+func (ap *AiApi) ListChats(c *gin.Context) {
+	cl, err := Authorize(c)
+	if err != nil {
+		response.ErrorWithMsg(c, err.Error())
+		return
+	}
+	page, pageSize := parsePagination(c)
+	sessions, total, err := aiService.ListChatSessions(c.Request.Context(), cl.UserId, page, pageSize)
+	if err != nil {
+		response.ErrorWithMsg(c, err.Error())
+		return
+	}
+	response.SuccessWithDetail(c, gin.H{
+		"items":     sessions,
+		"page":      page,
+		"page_size": pageSize,
+		"total":     total,
+	}, "query chats success")
+}
+
+func (ap *AiApi) GetChatSession(c *gin.Context) {
+	chatId := c.Param("chat_id")
+	if chatId == "" {
+		response.ErrorWithMsg(c, "missing chat_id")
+		return
+	}
+	cl, err := Authorize(c)
+	if err != nil {
+		response.ErrorWithMsg(c, err.Error())
+		return
+	}
+	session, err := aiService.GetChatSession(c.Request.Context(), cl.UserId, chatId)
+	if err != nil {
+		response.ErrorWithMsg(c, err.Error())
+		return
+	}
+	response.SuccessWithDetail(c, session, "query chat session success")
+}
+
 // OnlineStreamChat should handle chat in api layer
 func (ap *AiApi) OnlineStreamChat(c *gin.Context) {
-	c.Header("Content-Type", "text/event-stream")
-	c.Header("Connection", "keep-alive")
-	c.Header("Cache-Control", "")
 	ctx := c.Request.Context()
 
 	chatId := c.Query("chat_id")
-	//userId := c.GetUint("user_id")
 	cl, err := Authorize(c)
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
@@ -122,36 +197,55 @@ func (ap *AiApi) OnlineStreamChat(c *gin.Context) {
 		chatId = utils.GenerateUUID()
 	}
 
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Connection", "keep-alive")
+	c.Header("Cache-Control", "no-cache")
+
 	rp := response.StandardAiResponse{
 		AgentId: agentId,
+		ChatId:  chatId,
 		Status:  true,
 		Content: "",
 	}
 
-	pushStream := func(data string) error {
-		if c.Writer.Status() != http.StatusOK {
-			//response.ErrorWithMsg(c, "internet interrupted")
-			return errors.New("internet interrupted")
-		}
-
-		rp.Content += data
-		j, _ := json.Marshal(rp)
-		_, err := fmt.Fprintf(c.Writer, "data: %s\n\n", j)
+	writeSSE := func(payload interface{}) error {
+		j, err := json.Marshal(payload)
 		if err != nil {
 			return err
 		}
-
+		if _, err := fmt.Fprintf(c.Writer, "data: %s\n\n", j); err != nil {
+			return err
+		}
+		if flusher, ok := c.Writer.(http.Flusher); ok {
+			flusher.Flush()
+		}
 		return nil
 	}
-	if err := aiService.
-		StreamChat(ctx, userId, agentId, chatId, &req, pushStream); err != nil {
-		response.ErrorWithMsg(c, err.Error())
-		return
-	}
 
-	response.SuccessWithDetail(c, response.OnlineStreamChatResponse{
+	history := aiService.GetChatHistory(ctx, userId, chatId)
+	if err := writeSSE(response.OnlineStreamChatResponse{
 		ChatId:  chatId,
 		AgentId: agentId,
 		UserId:  userId,
-	}, "success")
+		History: history,
+	}); err != nil {
+		return
+	}
+
+	pushStream := func(data string) error {
+		if c.Writer.Status() != http.StatusOK {
+			return errors.New("internet interrupted")
+		}
+
+		rp.Content = data
+		return writeSSE(rp)
+	}
+	if err := aiService.StreamChat(ctx, userId, agentId, chatId, &req, pushStream); err != nil {
+		rp.Status = false
+		rp.Message = err.Error()
+		_ = writeSSE(rp)
+		return
+	}
+	rp.Message = "done"
+	_ = writeSSE(rp)
 }

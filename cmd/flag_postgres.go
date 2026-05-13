@@ -15,5 +15,10 @@ func MigrateDB() error {
 	}
 	// 迁移数据库结构
 	log.Println("migrate db")
-	return db.AutoMigrate(&entity.User{}, &entity.Post{}, &entity.TokenBlacklist{}, &entity.Agent{})
+	return db.AutoMigrate(&entity.User{}, &entity.Post{}, &entity.Comment{},
+		&entity.Like{}, &entity.Dislike{},
+		&entity.PostLike{}, &entity.PostDislike{},
+		&entity.CommentLike{}, &entity.CommentDislike{},
+		&entity.TokenBlacklist{}, &entity.Agent{},
+		&entity.ChatSession{})
 }

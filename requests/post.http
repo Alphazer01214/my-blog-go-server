@@ -1,6 +1,22 @@
 ### 提示
 ### 先执行 `requests/auth.http` 里的登录请求，
 ### 然后把返回的 `access-token` 和 `refresh-token` 放到下面的 Cookie 里。
+###
+### 响应中 author 字段使用统一的 UserInfo 结构体：
+### {
+###   "user_id": 1,
+###   "created_at": "2024-01-01T00:00:00Z",
+###   "updated_at": "2024-01-01T00:00:00Z",
+###   "username": "takamatsu_tomori",
+###   "email": "alphazer01214@gmail.com",
+###   "phone": "114514",
+###   "bio": "I'm takamatsu_tomori",
+###   "avatar": "https://cdn.discordapp.com/avatars/1/1.png",
+###   "admin": false,
+###   "role": 0,
+###   "post_count": 10,
+###   "comment_count": 20
+### }
 
 @baseUrl = http://localhost:2333
 @accessToken = your_access_token
@@ -19,7 +35,7 @@ Cookie: access-token={{accessToken}}; refresh-token={{refreshToken}}
   },
   "title": "test",
   "content": "test",
-  "keywords": "acceed coat 114514",
+  "keywords": ["acceed", "coat", "114514"],
   "category": "test",
   "public": true,
   "cover": "https://cdn.discordapp.com/avatars/1/1.png"
@@ -38,24 +54,83 @@ Cookie: access-token={{accessToken}}; refresh-token={{refreshToken}}
   },
   "title": "private test",
   "content": "private private private",
-  "keywords": "acceed coat 114514",
+  "keywords": ["acceed", "coat", "114514"],
   "category": "test",
   "public": false,
   "cover": "https://cdn.discordapp.com/avatars/1/1.png"
 }
 
 ### get one public post by id
-GET {{baseUrl}}/api/post?id=1
+GET {{baseUrl}}/api/post/1
 
 ### get one private post by id (must be author and logged in)
-GET {{baseUrl}}/api/post?id=2
+GET {{baseUrl}}/api/post/2
 Cookie: access-token={{accessToken}}; refresh-token={{refreshToken}}
 
 ### get all posts
 GET {{baseUrl}}/api/post
 
-### get limited posts
-GET {{baseUrl}}/api/post?max_query=10
+### get posts by pagination
+GET {{baseUrl}}/api/post?page=1&page_size=10
 
-### update post
-### 当前项目里 `Update` 处理函数已存在，但还没有对应路由，因此这一项暂时不能直接测试。
+### update post (canonical)
+POST {{baseUrl}}/api/update
+Content-Type: application/json
+Cookie: access-token={{accessToken}}; refresh-token={{refreshToken}}
+
+{
+  "post_id": 1,
+  "title": "updated title",
+  "content": "updated content",
+  "keywords": ["go", "api"],
+  "category": "test",
+  "public": true,
+  "cover": "https://cdn.discordapp.com/avatars/1/1.png",
+  "env": {
+    "ipv6": "test",
+    "device_info": "test",
+    "os": "Windows"
+  }
+}
+
+### update post (compat alias)
+POST {{baseUrl}}/api/post/update
+Content-Type: application/json
+Cookie: access-token={{accessToken}}; refresh-token={{refreshToken}}
+
+{
+  "post_id": 1,
+  "title": "updated title via alias",
+  "content": "updated content via alias",
+  "keywords": ["go", "api"],
+  "category": "test",
+  "public": true,
+  "cover": "https://cdn.discordapp.com/avatars/1/1.png",
+  "env": {
+    "ipv6": "test",
+    "device_info": "test",
+    "os": "Windows"
+  }
+}
+
+### delete post
+DELETE {{baseUrl}}/api/post/1
+Cookie: access-token={{accessToken}}; refresh-token={{refreshToken}}
+
+### like a post (toggle)
+POST {{baseUrl}}/api/post/like
+Content-Type: application/json
+Cookie: access-token={{accessToken}}; refresh-token={{refreshToken}}
+
+{
+  "post_id": 1
+}
+
+### dislike a post (toggle)
+POST {{baseUrl}}/api/post/dislike
+Content-Type: application/json
+Cookie: access-token={{accessToken}}; refresh-token={{refreshToken}}
+
+{
+  "post_id": 1
+}

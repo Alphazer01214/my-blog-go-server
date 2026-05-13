@@ -14,9 +14,7 @@ type PostApi struct{}
 func (pa *PostApi) Create(c *gin.Context) {
 	var req request.PostCreateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(400, gin.H{
-			"message": "Invalid request",
-		})
+		response.ErrorWithMsg(c, "invalid request")
 		return
 	}
 
@@ -31,78 +29,82 @@ func (pa *PostApi) Create(c *gin.Context) {
 		UserId:   userId,
 		Title:    req.Title,
 		Cover:    req.Cover,
+		Tags:     req.Tags,
 		Category: req.Category,
 		Keywords: req.Keywords,
 		Content:  req.Content,
 		Public:   req.Public,
 	}
-	if err := postService.Create(post); err != nil {
-		c.JSON(500, gin.H{
-			"message": "Failed to create post",
-		})
+	r, err := postService.Create(post)
+	if err != nil {
+		response.ErrorWithMsg(c, err.Error())
 		return
 	}
 
-	response.SuccessWithMsg(c, "post success")
+	response.SuccessWithDetail(c, r, "post success")
 }
 
 func (pa *PostApi) Query(c *gin.Context) {
-	if c.Query("id") != "" {
+	if val := c.Param("id"); val != "" {
 		pa.QueryOneById(c)
 		return
 	}
-
-	pa.QueryAll(c)
+	response.ErrorWithMsg(c, "empty query")
 }
 
 func (pa *PostApi) QueryOneById(c *gin.Context) {
-	sid := c.Query("id")
+	sid := c.Param("id") // post id
+	cl, err := Authorize(c)
+	if err != nil {
+		response.ErrorWithMsg(c, err.Error())
+		return
+	}
+	viewerId := cl.UserId
 	if sid == "" {
 		response.ErrorWithMsg(c, "missing id")
 		return
 	}
+	//fmt.Printf("current viewer id: %v", viewerId)
 	id, err := strconv.ParseUint(sid, 10, 64)
 	if err != nil {
 		response.ErrorWithMsg(c, "invalid id")
 		return
 	}
-	post, err := postService.QueryOneById(uint(id))
+	post, err := postService.QueryOneById(uint(id), viewerId)
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
-	cl, err := Authorize(c)
-	if err != nil {
-		response.ErrorWithMsg(c, err.Error())
-	}
-	userId := cl.UserId
-	if post.Public == false && userId != post.UserId {
-		response.ErrorWithMsg(c, "post is private")
+	if !post.Public && viewerId != post.UserId {
+		post.Content = "this is private post"
 		return
 	}
 	response.SuccessWithDetail(c, post, "query success")
 }
 
 func (pa *PostApi) QueryAll(c *gin.Context) {
-	posts, err := postService.QueryAll()
+	cl, err := Authorize(c)
+	if err != nil {
+		response.ErrorWithMsg(c, err.Error())
+		return
+	}
+	viewerId := cl.UserId
+	page, pageSize := parsePagination(c)
+
+	//fmt.Printf("current viewer id: %v", viewerId)
+
+	postList, err := postService.QueryAll(page, pageSize, viewerId)
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
 
-	maxQuery := c.Query("max_query")
-	if maxQuery != "" {
-		limit, err := strconv.ParseUint(maxQuery, 10, 64)
-		if err != nil {
-			response.ErrorWithMsg(c, "invalid max_query")
-			return
-		}
-		if int(limit) < len(posts) {
-			posts = posts[:int(limit)]
+	for i, item := range postList.Items {
+		if !item.Public && viewerId != item.UserId {
+			postList.Items[i].Content = "this is private post"
 		}
 	}
-
-	response.SuccessWithDetail(c, posts, "query success")
+	response.SuccessWithDetail(c, postList, "query success")
 }
 
 func (pa *PostApi) EvilQuery(c *gin.Context) {
@@ -110,15 +112,78 @@ func (pa *PostApi) EvilQuery(c *gin.Context) {
 }
 
 func (pa *PostApi) Delete(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		response.ErrorWithMsg(c, "invalid id")
+		return
+	}
+	cl, err := Authorize(c)
+	if err != nil {
+		response.ErrorWithMsg(c, err.Error())
+		return
+	}
+	post, err := postService.QueryOneById(uint(id), 0)
+	if err != nil {
+		response.ErrorWithMsg(c, err.Error())
+		return
+	}
+	if post.UserId != cl.UserId {
+		response.ErrorWithMsg(c, "you can't delete others' post")
+		return
+	}
+	if err := postService.DeleteById(uint(id)); err != nil {
+		response.ErrorWithMsg(c, err.Error())
+		return
+	}
+	response.SuccessWithMsg(c, "delete success")
+}
 
+func (pa *PostApi) Like(c *gin.Context) {
+	var req request.PostActionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.ErrorWithMsg(c, "invalid request")
+		return
+	}
+
+	cl, err := Authorize(c)
+	if err != nil {
+		response.ErrorWithMsg(c, err.Error())
+		return
+	}
+
+	if err := postService.Like(req.PostId, cl.UserId); err != nil {
+		response.ErrorWithMsg(c, err.Error())
+		return
+	}
+
+	response.SuccessWithMsg(c, "like success")
+}
+
+func (pa *PostApi) Dislike(c *gin.Context) {
+	var req request.PostActionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.ErrorWithMsg(c, "invalid request")
+		return
+	}
+
+	cl, err := Authorize(c)
+	if err != nil {
+		response.ErrorWithMsg(c, err.Error())
+		return
+	}
+
+	if err := postService.Dislike(req.PostId, cl.UserId); err != nil {
+		response.ErrorWithMsg(c, err.Error())
+		return
+	}
+
+	response.SuccessWithMsg(c, "dislike success")
 }
 
 func (pa *PostApi) Update(c *gin.Context) {
 	var req request.PostUpdateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(400, gin.H{
-			"message": "Invalid request",
-		})
+		response.ErrorWithMsg(c, "invalid request")
 		return
 	}
 	cl, err := Authorize(c)
@@ -127,7 +192,7 @@ func (pa *PostApi) Update(c *gin.Context) {
 		return
 	}
 	userId := cl.UserId
-	post, err := postService.QueryOneById(req.Id)
+	post, err := postService.QueryOneById(req.Id, 0)
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
