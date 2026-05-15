@@ -16,7 +16,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func GenerateBaseClaims(id uint, username string, role constant.RoleType) request.BaseClaims {
+func GenerateBaseClaims(id uint, username string, role entity.RoleType) request.BaseClaims {
 	return request.BaseClaims{
 		UserId:   id,
 		Username: username,

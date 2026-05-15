@@ -20,7 +20,7 @@ func (cs *CommentService) Create(comment *entity.Comment) (*response.Comment, er
 
 		if comment.ParentCommentId != 0 {
 			if err := tx.Model(&entity.Comment{}).Where("id = ?", comment.ParentCommentId).
-				Update("replies", gorm.Expr("replies + 1")).Error; err != nil {
+				Update("reply_count", gorm.Expr("reply_count + 1")).Error; err != nil {
 				return err
 			}
 		}
@@ -33,7 +33,7 @@ func (cs *CommentService) Create(comment *entity.Comment) (*response.Comment, er
 	}
 
 	r := toResponseComment(comment, nil, nil, nil)
-	if author, err := Service.UserService.GetUserInfoById(comment.UserId); err == nil {
+	if author, err := Service.UserService.GetUserInfoById(comment.UserId, 0); err == nil {
 		r.Author = author
 	}
 	return &r, nil
@@ -82,7 +82,7 @@ func (cs *CommentService) QueryByPost(postId uint, page, pageSize int, viewerId 
 	authorMap := make(map[uint]response.UserInfo)
 	for _, c := range allComments {
 		if _, exists := authorMap[c.UserId]; !exists {
-			if info, err := Service.UserService.GetUserInfoById(c.UserId); err == nil {
+			if info, err := Service.UserService.GetUserInfoById(c.UserId, 0); err == nil {
 				authorMap[c.UserId] = info
 			}
 		}
@@ -95,15 +95,17 @@ func (cs *CommentService) QueryByPost(postId uint, page, pageSize int, viewerId 
 		for i, c := range allComments {
 			allIds[i] = c.ID
 		}
-		var likes []entity.CommentLike
-		global.GetDB().Where("comment_id IN ? AND user_id = ?", allIds, viewerId).Find(&likes)
+		var likes []entity.Action
+		global.GetDB().Where("target_id IN ? AND user_id = ? AND target_type = ? AND action_type = ?",
+			allIds, viewerId, entity.TargetComment, entity.ActionLike).Find(&likes)
 		for _, l := range likes {
-			likedIds[l.CommentId] = true
+			likedIds[l.TargetId] = true
 		}
-		var dislikes []entity.CommentDislike
-		global.GetDB().Where("comment_id IN ? AND user_id = ?", allIds, viewerId).Find(&dislikes)
+		var dislikes []entity.Action
+		global.GetDB().Where("target_id IN ? AND user_id = ? AND target_type = ? AND action_type = ?",
+			allIds, viewerId, entity.TargetComment, entity.ActionDislike).Find(&dislikes)
 		for _, d := range dislikes {
-			dislikedIds[d.CommentId] = true
+			dislikedIds[d.TargetId] = true
 		}
 	}
 
@@ -136,7 +138,7 @@ func (cs *CommentService) QueryReplies(rootCommentId uint, page, pageSize int, v
 	authorMap := make(map[uint]response.UserInfo)
 	for _, c := range replies {
 		if _, exists := authorMap[c.UserId]; !exists {
-			if info, err := Service.UserService.GetUserInfoById(c.UserId); err == nil {
+			if info, err := Service.UserService.GetUserInfoById(c.UserId, 0); err == nil {
 				authorMap[c.UserId] = info
 			}
 		}
@@ -149,15 +151,17 @@ func (cs *CommentService) QueryReplies(rootCommentId uint, page, pageSize int, v
 		for i, c := range replies {
 			allIds[i] = c.ID
 		}
-		var likes []entity.CommentLike
-		global.GetDB().Where("comment_id IN ? AND user_id = ?", allIds, viewerId).Find(&likes)
+		var likes []entity.Action
+		global.GetDB().Where("target_id IN ? AND user_id = ? AND target_type = ? AND action_type = ?",
+			allIds, viewerId, entity.TargetComment, entity.ActionLike).Find(&likes)
 		for _, l := range likes {
-			likedIds[l.CommentId] = true
+			likedIds[l.TargetId] = true
 		}
-		var dislikes []entity.CommentDislike
-		global.GetDB().Where("comment_id IN ? AND user_id = ?", allIds, viewerId).Find(&dislikes)
+		var dislikes []entity.Action
+		global.GetDB().Where("target_id IN ? AND user_id = ? AND target_type = ? AND action_type = ?",
+			allIds, viewerId, entity.TargetComment, entity.ActionDislike).Find(&dislikes)
 		for _, d := range dislikes {
-			dislikedIds[d.CommentId] = true
+			dislikedIds[d.TargetId] = true
 		}
 	}
 
@@ -210,12 +214,12 @@ func (cs *CommentService) Delete(commentId, userId uint) error {
 			return err
 		}
 		// root
-		if err := tx.Model(&entity.Comment{}).Where("id = ?", comment.RootCommentId).Update("replies", gorm.Expr(fmt.Sprintf("GREATEST(replies - %v)", delCnt))).Error; err != nil {
+		if err := tx.Model(&entity.Comment{}).Where("id = ?", comment.RootCommentId).Update("reply_count", gorm.Expr(fmt.Sprintf("GREATEST(reply_count - %v)", delCnt))).Error; err != nil {
 			return err
 		}
 		// parent
 		if comment.ParentCommentId != 0 {
-			if err := tx.Model(&entity.Comment{}).Where("id = ?", comment.ParentCommentId).Update("replies", gorm.Expr(fmt.Sprintf("GREATEST(replies - %v)", delCnt))).Error; err != nil {
+			if err := tx.Model(&entity.Comment{}).Where("id = ?", comment.ParentCommentId).Update("reply_count", gorm.Expr(fmt.Sprintf("GREATEST(reply_count - %v)", delCnt))).Error; err != nil {
 				return err
 			}
 		}
@@ -230,59 +234,72 @@ func (cs *CommentService) Delete(commentId, userId uint) error {
 
 func (cs *CommentService) Like(commentId, userId uint) error {
 	return global.GetDB().Transaction(func(tx *gorm.DB) error {
-		var existingLike entity.CommentLike
+		var existing entity.Action
 
-		result := tx.Where("comment_id = ? AND user_id = ?", commentId, userId).First(&existingLike)
+		result := tx.Where("target_id = ? AND user_id = ? AND target_type = ? AND action_type = ?",
+			commentId, userId, entity.TargetComment, entity.ActionLike).First(&existing)
 		if result.RowsAffected > 0 {
-			// 这位用户赞了这个评论
-			if err := tx.Delete(&existingLike).Error; err != nil {
+			if err := tx.Delete(&existing).Error; err != nil {
 				return err
 			}
 			return tx.Model(&entity.Comment{}).Where("id = ?", commentId).
-				Update("likes", gorm.Expr("GREATEST(likes - 1, 0)")).Error
+				Update("like_count", gorm.Expr("GREATEST(like_count - 1, 0)")).Error
 		}
 
-		r := tx.Where("comment_id = ? AND user_id = ?", commentId, userId).Delete(&entity.CommentDislike{})
+		r := tx.Where("target_id = ? AND user_id = ? AND target_type = ? AND action_type = ?",
+			commentId, userId, entity.TargetComment, entity.ActionDislike).Delete(&entity.Action{})
 		if r.RowsAffected > 0 {
 			if err := tx.Model(&entity.Comment{}).Where("id = ?", commentId).
-				Update("dislikes", gorm.Expr("GREATEST(dislikes - 1, 0)")).Error; err != nil {
+				Update("dislike_count", gorm.Expr("GREATEST(dislike_count - 1, 0)")).Error; err != nil {
 				return err
 			}
 		}
 
-		if err := tx.Create(&entity.CommentLike{CommentId: commentId, Like: entity.Like{UserId: userId}}).Error; err != nil {
+		if err := tx.Create(&entity.Action{
+			UserId:     userId,
+			TargetId:   commentId,
+			ActType: entity.ActionLike,
+			TgtType: entity.TargetComment,
+		}).Error; err != nil {
 			return err
 		}
 		return tx.Model(&entity.Comment{}).Where("id = ?", commentId).
-			Update("likes", gorm.Expr("likes + 1")).Error
+			Update("like_count", gorm.Expr("like_count + 1")).Error
 	})
 }
 
 func (cs *CommentService) Dislike(commentId, userId uint) error {
 	return global.GetDB().Transaction(func(tx *gorm.DB) error {
-		var existingDislike entity.CommentDislike
-		result := tx.Where("comment_id = ? AND user_id = ?", commentId, userId).First(&existingDislike)
+		var existing entity.Action
+		result := tx.Where("target_id = ? AND user_id = ? AND target_type = ? AND action_type = ?",
+			commentId, userId, entity.TargetComment, entity.ActionDislike).First(&existing)
 		if result.RowsAffected > 0 {
-			if err := tx.Delete(&existingDislike).Error; err != nil {
+			if err := tx.Delete(&existing).Error; err != nil {
 				return err
 			}
 			return tx.Model(&entity.Comment{}).Where("id = ?", commentId).
-				Update("dislikes", gorm.Expr("GREATEST(dislikes - 1, 0)")).Error
+				Update("dislike_count", gorm.Expr("GREATEST(dislike_count - 1, 0)")).Error
 		}
 
-		r := tx.Where("comment_id = ? AND user_id = ?", commentId, userId).Delete(&entity.CommentLike{})
+		r := tx.Where("target_id = ? AND user_id = ? AND target_type = ? AND action_type = ?",
+			commentId, userId, entity.TargetComment, entity.ActionLike).Delete(&entity.Action{})
 		if r.RowsAffected > 0 {
 			if err := tx.Model(&entity.Comment{}).Where("id = ?", commentId).
-				Update("likes", gorm.Expr("GREATEST(likes - 1, 0)")).Error; err != nil {
+				Update("like_count", gorm.Expr("GREATEST(like_count - 1, 0)")).Error; err != nil {
 				return err
 			}
 		}
 
-		if err := tx.Create(&entity.CommentDislike{CommentId: commentId, Dislike: entity.Dislike{UserId: userId}}).Error; err != nil {
+		if err := tx.Create(&entity.Action{
+			UserId:     userId,
+			TargetId:   commentId,
+			ActType: entity.ActionDislike,
+			TgtType: entity.TargetComment,
+		}).Error; err != nil {
 			return err
 		}
 		return tx.Model(&entity.Comment{}).Where("id = ?", commentId).
-			Update("dislikes", gorm.Expr("dislikes + 1")).Error
+			Update("dislike_count", gorm.Expr("dislike_count + 1")).Error
 	})
 }
 
@@ -296,9 +313,9 @@ func toResponseComment(c *entity.Comment, authorMap map[uint]response.UserInfo, 
 		Content:         c.Content,
 		CreatedAt:       c.CreatedAt,
 		UpdatedAt:       c.UpdatedAt,
-		Likes:           c.Likes,
-		Dislikes:        c.Dislikes,
-		Replies:         c.Replies,
+		Likes:           c.LikeCount,
+		Dislikes:        c.DislikeCount,
+		Replies:         c.ReplyCount,
 		IsLiked:         likedIds[c.ID],
 		IsDisliked:      dislikedIds[c.ID],
 	}

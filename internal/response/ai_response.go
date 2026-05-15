@@ -47,3 +47,8 @@ type AgentInfo struct {
 	Prompts  datatypes.JSONMap `json:"prompts"`
 	Memories datatypes.JSONMap `json:"memories"`
 }
+
+type AgentList struct {
+	UserId uint         `json:"user_id"`
+	Agents []*AgentInfo `json:"agents"`
+}

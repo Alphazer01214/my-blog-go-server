@@ -129,7 +129,7 @@ func (u *UserApi) CurrentUser(c *gin.Context) {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
-	info, err := userService.GetUserInfoById(cl.UserId)
+	info, err := userService.GetUserInfoById(cl.UserId, 0)
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
@@ -143,7 +143,7 @@ func (u *UserApi) QueryUserById(c *gin.Context) {
 		response.ErrorWithMsg(c, "invalid id")
 		return
 	}
-	rp, err := userService.GetUserInfoById(uint(id))
+	rp, err := userService.GetUserInfoById(uint(id), GetUserId(c))
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
@@ -156,7 +156,7 @@ func (u *UserApi) GetAllUsers(c *gin.Context) {
 	_, err := strconv.ParseInt(scnt, 10, 64)
 	if err != nil {
 	}
-	usrInfo, err := userService.GetAllUserInfo()
+	usrInfo, err := userService.GetAllUserInfo(GetUserId(c))
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
@@ -198,4 +198,91 @@ func (u *UserApi) QueryUserComments(c *gin.Context) {
 		PageSize: pageSize,
 		Total:    total,
 	}, "query user comments success")
+}
+
+func (u *UserApi) Follow(c *gin.Context) {
+	var req request.UserFollowRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.ErrorWithMsg(c, "invalid request")
+		return
+	}
+
+	cl, err := Authorize(c)
+	if err != nil {
+		response.ErrorWithMsg(c, err.Error())
+		return
+	}
+
+	rp, err := userService.Follow(cl.UserId, req.FollowingId)
+	if err != nil {
+		response.ErrorWithMsg(c, err.Error())
+		return
+	}
+	response.SuccessWithDetail(c, rp, "follow toggled")
+}
+
+func (u *UserApi) GetFollowers(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		response.ErrorWithMsg(c, "invalid user id")
+		return
+	}
+	page, pageSize := parsePagination(c)
+	rp, err := userService.GetFollowers(uint(id), GetUserId(c), page, pageSize)
+	if err != nil {
+		response.ErrorWithMsg(c, err.Error())
+		return
+	}
+	response.SuccessWithDetail(c, rp, "query followers success")
+}
+
+func (u *UserApi) GetFollowing(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		response.ErrorWithMsg(c, "invalid user id")
+		return
+	}
+	page, pageSize := parsePagination(c)
+	rp, err := userService.GetFollowing(uint(id), GetUserId(c), page, pageSize)
+	if err != nil {
+		response.ErrorWithMsg(c, err.Error())
+		return
+	}
+	response.SuccessWithDetail(c, rp, "query following success")
+}
+
+func (u *UserApi) GetSettings(c *gin.Context) {
+	cl, err := Authorize(c)
+	if err != nil {
+		response.ErrorWithMsg(c, err.Error())
+		return
+	}
+	setting, err := userService.GetSetting(cl.UserId)
+	if err != nil {
+		response.ErrorWithMsg(c, err.Error())
+		return
+	}
+	response.SuccessWithDetail(c, response.UserSettingResponse{
+		PostPublic: setting.PostPublic,
+	}, "get settings success")
+}
+
+func (u *UserApi) UpdateSettings(c *gin.Context) {
+	var req request.UserSettingUpdateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.ErrorWithMsg(c, "invalid request")
+		return
+	}
+
+	cl, err := Authorize(c)
+	if err != nil {
+		response.ErrorWithMsg(c, err.Error())
+		return
+	}
+
+	if err := userService.UpdateSetting(cl.UserId, req); err != nil {
+		response.ErrorWithMsg(c, err.Error())
+		return
+	}
+	response.SuccessWithMsg(c, "update settings success")
 }

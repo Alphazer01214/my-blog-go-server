@@ -1,6 +1,8 @@
 package service
 
 import (
+	"encoding/json"
+
 	"blog.alphazer01214.top/internal/entity"
 	"blog.alphazer01214.top/internal/global"
 	"blog.alphazer01214.top/internal/request"
@@ -15,7 +17,7 @@ func (ps *PostService) Create(post *entity.Post) (*response.PostDetail, error) {
 	if err := ps.create(post); err != nil {
 		return nil, err
 	}
-	author, err := Service.UserService.GetUserInfoById(post.UserId)
+	author, err := Service.UserService.GetUserInfoById(post.UserId, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -27,7 +29,7 @@ func (ps *PostService) QueryOneById(id uint, viewerId uint) (*response.PostDetai
 	if err != nil {
 		return nil, err
 	}
-	author, err := Service.UserService.GetUserInfoById(post.UserId)
+	author, err := Service.UserService.GetUserInfoById(post.UserId, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -48,7 +50,7 @@ func (ps *PostService) QueryAll(page, pageSize int, viewerId uint) (response.Pos
 
 	items := make([]response.PostDetail, len(posts))
 	for i, post := range posts {
-		author, err := Service.UserService.GetUserInfoById(post.UserId)
+	author, err := Service.UserService.GetUserInfoById(post.UserId, 0)
 		if err != nil {
 			return response.PostList{}, err
 		}
@@ -75,7 +77,7 @@ func (ps *PostService) Update(id uint, req request.PostUpdateRequest) error {
 
 	dbPost.Title = req.Title
 	dbPost.Cover = req.Cover
-	dbPost.Category = req.Category
+	dbPost.CategoryId = req.CategoryId
 	dbPost.Tags = req.Tags
 	dbPost.Keywords = req.Keywords
 	dbPost.Content = req.Content
@@ -85,17 +87,19 @@ func (ps *PostService) Update(id uint, req request.PostUpdateRequest) error {
 
 func (ps *PostService) Like(postId, userId uint) error {
 	return global.GetDB().Transaction(func(tx *gorm.DB) error {
-		var existingLike entity.PostLike
-		result := tx.Where("post_id = ? AND user_id = ?", postId, userId).First(&existingLike)
+		var existing entity.Action
+		result := tx.Where("target_id = ? AND user_id = ? AND target_type = ? AND action_type = ?",
+			postId, userId, entity.TargetPost, entity.ActionLike).First(&existing)
 		if result.RowsAffected > 0 {
-			if err := tx.Delete(&existingLike).Error; err != nil {
+			if err := tx.Delete(&existing).Error; err != nil {
 				return err
 			}
 			return tx.Model(&entity.Post{}).Where("id = ?", postId).
 				Update("like_count", gorm.Expr("GREATEST(like_count - 1, 0)")).Error
 		}
 
-		r := tx.Where("post_id = ? AND user_id = ?", postId, userId).Delete(&entity.PostDislike{})
+		r := tx.Where("target_id = ? AND user_id = ? AND target_type = ? AND action_type = ?",
+			postId, userId, entity.TargetPost, entity.ActionDislike).Delete(&entity.Action{})
 		if r.RowsAffected > 0 {
 			if err := tx.Model(&entity.Post{}).Where("id = ?", postId).
 				Update("dislike_count", gorm.Expr("GREATEST(dislike_count - 1, 0)")).Error; err != nil {
@@ -103,7 +107,12 @@ func (ps *PostService) Like(postId, userId uint) error {
 			}
 		}
 
-		if err := tx.Create(&entity.PostLike{PostId: postId, Like: entity.Like{UserId: userId}}).Error; err != nil {
+		if err := tx.Create(&entity.Action{
+			UserId:     userId,
+			TargetId:   postId,
+			ActType: entity.ActionLike,
+			TgtType: entity.TargetPost,
+		}).Error; err != nil {
 			return err
 		}
 		return tx.Model(&entity.Post{}).Where("id = ?", postId).
@@ -113,17 +122,19 @@ func (ps *PostService) Like(postId, userId uint) error {
 
 func (ps *PostService) Dislike(postId, userId uint) error {
 	return global.GetDB().Transaction(func(tx *gorm.DB) error {
-		var existingDislike entity.PostDislike
-		result := tx.Where("post_id = ? AND user_id = ?", postId, userId).First(&existingDislike)
+		var existing entity.Action
+		result := tx.Where("target_id = ? AND user_id = ? AND target_type = ? AND action_type = ?",
+			postId, userId, entity.TargetPost, entity.ActionDislike).First(&existing)
 		if result.RowsAffected > 0 {
-			if err := tx.Delete(&existingDislike).Error; err != nil {
+			if err := tx.Delete(&existing).Error; err != nil {
 				return err
 			}
 			return tx.Model(&entity.Post{}).Where("id = ?", postId).
 				Update("dislike_count", gorm.Expr("GREATEST(dislike_count - 1, 0)")).Error
 		}
 
-		r := tx.Where("post_id = ? AND user_id = ?", postId, userId).Delete(&entity.PostLike{})
+		r := tx.Where("target_id = ? AND user_id = ? AND target_type = ? AND action_type = ?",
+			postId, userId, entity.TargetPost, entity.ActionLike).Delete(&entity.Action{})
 		if r.RowsAffected > 0 {
 			if err := tx.Model(&entity.Post{}).Where("id = ?", postId).
 				Update("like_count", gorm.Expr("GREATEST(like_count - 1, 0)")).Error; err != nil {
@@ -131,11 +142,62 @@ func (ps *PostService) Dislike(postId, userId uint) error {
 			}
 		}
 
-		if err := tx.Create(&entity.PostDislike{PostId: postId, Dislike: entity.Dislike{UserId: userId}}).Error; err != nil {
+		if err := tx.Create(&entity.Action{
+			UserId:     userId,
+			TargetId:   postId,
+			ActType: entity.ActionDislike,
+			TgtType: entity.TargetPost,
+		}).Error; err != nil {
 			return err
 		}
 		return tx.Model(&entity.Post{}).Where("id = ?", postId).
 			Update("dislike_count", gorm.Expr("dislike_count + 1")).Error
+	})
+}
+
+func (ps *PostService) Favorite(postId, userId uint) error {
+	return global.GetDB().Transaction(func(tx *gorm.DB) error {
+		var existing entity.Action
+		result := tx.Where("target_id = ? AND user_id = ? AND target_type = ? AND action_type = ?",
+			postId, userId, entity.TargetPost, entity.ActionFavorite).First(&existing)
+		if result.RowsAffected > 0 {
+			if err := tx.Delete(&existing).Error; err != nil {
+				return err
+			}
+			return tx.Model(&entity.Post{}).Where("id = ?", postId).
+				Update("favorite_count", gorm.Expr("GREATEST(favorite_count - 1, 0)")).Error
+		}
+
+		if err := tx.Create(&entity.Action{
+			UserId:     userId,
+			TargetId:   postId,
+			ActType: entity.ActionFavorite,
+			TgtType: entity.TargetPost,
+		}).Error; err != nil {
+			return err
+		}
+		return tx.Model(&entity.Post{}).Where("id = ?", postId).
+			Update("favorite_count", gorm.Expr("favorite_count + 1")).Error
+	})
+}
+
+func (ps *PostService) Share(postId, userId uint, shareInfo entity.ShareInfo) error {
+	extraJSON, err := json.Marshal(shareInfo)
+	if err != nil {
+		return err
+	}
+	return global.GetDB().Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&entity.Action{
+			UserId:     userId,
+			TargetId:   postId,
+			ActType: entity.ActionShare,
+			TgtType: entity.TargetPost,
+			ExtraInfo:  extraJSON,
+		}).Error; err != nil {
+			return err
+		}
+		return tx.Model(&entity.Post{}).Where("id = ?", postId).
+			Update("share_count", gorm.Expr("share_count + 1")).Error
 	})
 }
 
@@ -151,7 +213,7 @@ func (ps *PostService) GetPostsByUser(userId uint, page, pageSize int) (response
 		return response.PostList{}, err
 	}
 
-	author, err := Service.UserService.GetUserInfoById(userId)
+	author, err := Service.UserService.GetUserInfoById(userId, 0)
 	if err != nil {
 		return response.PostList{}, err
 	}
@@ -179,35 +241,53 @@ func (ps *PostService) queryOneById(id uint) (*entity.Post, error) {
 }
 
 func (ps *PostService) toPostDetail(post *entity.Post, author *response.UserInfo, viewerId uint) *response.PostDetail {
+	var categoryName string
+	if post.CategoryId != 0 {
+		var cat entity.Category
+		if err := global.GetDB().Where("id = ?", post.CategoryId).First(&cat).Error; err == nil {
+			categoryName = cat.Name
+		}
+	}
+
 	pd := &response.PostDetail{
-		ID:           post.ID,
-		CreatedAt:    post.CreatedAt,
-		UpdatedAt:    post.UpdatedAt,
-		Title:        post.Title,
-		Cover:        post.Cover,
-		UserId:       post.UserId,
-		Tags:         post.Tags,
-		Category:     post.Category,
-		Keywords:     post.Keywords,
-		Content:      post.Content,
-		ViewCount:    post.ViewCount,
-		CommentCount: post.CommentCount,
-		LikeCount:    post.LikeCount,
-		DislikeCount: post.DislikeCount,
-		Public:       post.Public,
+		ID:            post.ID,
+		CreatedAt:     post.CreatedAt,
+		UpdatedAt:     post.UpdatedAt,
+		Title:         post.Title,
+		Cover:         post.Cover,
+		UserId:        post.UserId,
+		Tags:          post.Tags,
+		CategoryId:    post.CategoryId,
+		CategoryName:  categoryName,
+		Keywords:      post.Keywords,
+		Content:       post.Content,
+		ViewCount:     post.ViewCount,
+		CommentCount:  post.CommentCount,
+		LikeCount:     post.LikeCount,
+		DislikeCount:  post.DislikeCount,
+		FavoriteCount: post.FavoriteCount,
+		ShareCount:    post.ShareCount,
+		Public:        post.Public,
 	}
 	if author != nil {
 		pd.Author = *author
 	}
 
 	if viewerId > 0 {
-		var like entity.PostLike
-		if global.GetDB().Where("post_id = ? AND user_id = ?", post.ID, viewerId).First(&like).Error == nil {
+		var like entity.Action
+		if global.GetDB().Where("target_id = ? AND user_id = ? AND target_type = ? AND action_type = ?",
+			post.ID, viewerId, entity.TargetPost, entity.ActionLike).First(&like).Error == nil {
 			pd.IsLiked = true
 		}
-		var dislike entity.PostDislike
-		if global.GetDB().Where("post_id = ? AND user_id = ?", post.ID, viewerId).First(&dislike).Error == nil {
+		var dislike entity.Action
+		if global.GetDB().Where("target_id = ? AND user_id = ? AND target_type = ? AND action_type = ?",
+			post.ID, viewerId, entity.TargetPost, entity.ActionDislike).First(&dislike).Error == nil {
 			pd.IsDisliked = true
+		}
+		var fav entity.Action
+		if global.GetDB().Where("target_id = ? AND user_id = ? AND target_type = ? AND action_type = ?",
+			post.ID, viewerId, entity.TargetPost, entity.ActionFavorite).First(&fav).Error == nil {
+			pd.IsFavorited = true
 		}
 	}
 

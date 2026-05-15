@@ -46,7 +46,7 @@ func JWTAuthMiddleware() gin.HandlerFunc {
 					c.Abort()
 					return
 				}
-				user, err := service.Service.UserService.GetUserInfoById(refreshClaims.Id)
+				user, err := service.Service.UserService.GetUserInfoById(refreshClaims.Id, 0)
 				if err != nil {
 					utils.RemoveRefreshTokenCookie(c)
 					response.ErrorAuth(c, "User not exists")

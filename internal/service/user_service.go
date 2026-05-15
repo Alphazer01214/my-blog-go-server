@@ -8,6 +8,8 @@ import (
 	"blog.alphazer01214.top/internal/request"
 	"blog.alphazer01214.top/internal/response"
 	"blog.alphazer01214.top/internal/utils"
+
+	"gorm.io/gorm"
 )
 
 type UserService struct{}
@@ -17,7 +19,26 @@ func (us *UserService) Register(user *entity.User, env *entity.EnvInfo) (*respon
 		return nil, errors.New("username already exist")
 	}
 	user.Password = utils.EncryptPassword(user.Password)
-	err := us.add(user)
+
+	err := global.GetDB().Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(user).Error; err != nil {
+			return err
+		}
+		profile := &entity.UserProfile{
+			UserId:   user.ID,
+			Username: user.Username,
+		}
+		if err := tx.Create(profile).Error; err != nil {
+			return err
+		}
+		setting := &entity.UserSetting{
+			UserId: user.ID,
+		}
+		if err := tx.Create(setting).Error; err != nil {
+			return err
+		}
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -43,7 +64,7 @@ func (us *UserService) Login(user *entity.User, env *entity.EnvInfo) (*response.
 		return nil, err
 	}
 
-	userInfo := us.toUserInfo(dbu)
+	userInfo := us.toUserInfo(dbu, 0)
 
 	return &response.Login{
 		UserInfo: userInfo,
@@ -86,36 +107,57 @@ func (us *UserService) GenerateToken(user *entity.User) (*response.Token, error)
 	return rp, nil
 }
 
-func (us *UserService) GetUserInfoById(id uint) (response.UserInfo, error) {
+func (us *UserService) GetUserInfoById(id uint, viewerId uint) (response.UserInfo, error) {
 	usr, err := us.getUserInstanceById(id)
 	if err != nil {
 		return response.UserInfo{}, err
 	}
-	return us.toUserInfo(usr), nil
+	return us.toUserInfo(usr, viewerId), nil
 }
 
-func (us *UserService) GetAllUserInfo() ([]response.UserInfo, error) {
+func (us *UserService) GetAllUserInfo(viewerId uint) ([]response.UserInfo, error) {
 	var infos []response.UserInfo
 	users, err := us.getAllUserInstance()
 	if err != nil {
 		return nil, err
 	}
 	for _, usr := range users {
-		infos = append(infos, us.toUserInfo(&usr))
+		infos = append(infos, us.toUserInfo(&usr, viewerId))
 	}
 	return infos, nil
 }
 
 func (us *UserService) UpdateUserProfile(userId uint, req request.UserUpdateRequest) (*response.UserUpdate, error) {
-	user := &entity.User{
-		Username: req.NewUsername,
-		Email:    req.NewEmail,
-		Phone:    req.NewPhone,
-		Bio:      req.NewBio,
-		Avatar:   req.NewAvatar,
-	}
-	user.ID = userId
-	if err := us.update(user); err != nil {
+	err := global.GetDB().Transaction(func(tx *gorm.DB) error {
+		if req.NewUsername != "" {
+			if err := tx.Model(&entity.User{}).Where("id = ?", userId).Update("username", req.NewUsername).Error; err != nil {
+				return err
+			}
+		}
+		updates := map[string]interface{}{}
+		if req.NewEmail != "" {
+			updates["email"] = req.NewEmail
+		}
+		if req.NewPhone != "" {
+			updates["phone"] = req.NewPhone
+		}
+		if req.NewBio != "" {
+			updates["bio"] = req.NewBio
+		}
+		if req.NewAvatar != "" {
+			updates["avatar"] = req.NewAvatar
+		}
+		if req.NewUsername != "" {
+			updates["username"] = req.NewUsername
+		}
+		if len(updates) > 0 {
+			if err := tx.Model(&entity.UserProfile{}).Where("user_id = ?", userId).Updates(updates).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
 		return nil, err
 	}
 	dbUser, err := us.getUserInstanceById(userId)
@@ -125,7 +167,7 @@ func (us *UserService) UpdateUserProfile(userId uint, req request.UserUpdateRequ
 
 	return &response.UserUpdate{
 		Env:      req.Env,
-		UserInfo: us.toUserInfo(dbUser),
+		UserInfo: us.toUserInfo(dbUser, 0),
 	}, nil
 }
 
@@ -161,7 +203,7 @@ func (us *UserService) GetCommentsByUser(userId uint, viewerId uint, page, pageS
 		return nil, 0, err
 	}
 
-	author, err := Service.UserService.GetUserInfoById(userId)
+	author, err := Service.UserService.GetUserInfoById(userId, 0)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -173,15 +215,17 @@ func (us *UserService) GetCommentsByUser(userId uint, viewerId uint, page, pageS
 		for i, c := range comments {
 			allIds[i] = c.ID
 		}
-		var likes []entity.CommentLike
-		global.GetDB().Where("comment_id IN ? AND user_id = ?", allIds, viewerId).Find(&likes)
+		var likes []entity.Action
+		global.GetDB().Where("target_id IN ? AND user_id = ? AND target_type = ? AND action_type = ?",
+			allIds, viewerId, entity.TargetComment, entity.ActionLike).Find(&likes)
 		for _, l := range likes {
-			likedIds[l.CommentId] = true
+			likedIds[l.TargetId] = true
 		}
-		var dislikes []entity.CommentDislike
-		global.GetDB().Where("comment_id IN ? AND user_id = ?", allIds, viewerId).Find(&dislikes)
+		var dislikes []entity.Action
+		global.GetDB().Where("target_id IN ? AND user_id = ? AND target_type = ? AND action_type = ?",
+			allIds, viewerId, entity.TargetComment, entity.ActionDislike).Find(&dislikes)
 		for _, d := range dislikes {
-			dislikedIds[d.CommentId] = true
+			dislikedIds[d.TargetId] = true
 		}
 	}
 
@@ -197,9 +241,9 @@ func (us *UserService) GetCommentsByUser(userId uint, viewerId uint, page, pageS
 			CreatedAt:       c.CreatedAt,
 			UpdatedAt:       c.UpdatedAt,
 			Author:          author,
-			Likes:           c.Likes,
-			Dislikes:        c.Dislikes,
-			Replies:         c.Replies,
+			Likes:           c.LikeCount,
+			Dislikes:        c.DislikeCount,
+			Replies:         c.ReplyCount,
 			IsLiked:         likedIds[c.ID],
 			IsDisliked:      dislikedIds[c.ID],
 		}
@@ -207,30 +251,205 @@ func (us *UserService) GetCommentsByUser(userId uint, viewerId uint, page, pageS
 	return result, total, nil
 }
 
+func (us *UserService) Follow(followerId, followingId uint) (*response.FollowStatus, error) {
+	if followerId == followingId {
+		return nil, errors.New("cannot follow yourself")
+	}
+
+	var targetUser entity.User
+	if err := global.GetDB().Where("id = ?", followingId).First(&targetUser).Error; err != nil {
+		return nil, errors.New("user not found")
+	}
+
+	var follow entity.UserFollow
+	result := global.GetDB().Where("follower_id = ? AND following_id = ?", followerId, followingId).First(&follow)
+
+	if result.RowsAffected > 0 {
+		// 已关注，取消关注
+		err := global.GetDB().Transaction(func(tx *gorm.DB) error {
+			if err := tx.Delete(&follow).Error; err != nil {
+				return err
+			}
+			if follow.IsMutual {
+				if err := tx.Model(&entity.UserFollow{}).
+					Where("follower_id = ? AND following_id = ?", followingId, followerId).
+					Update("is_mutual", false).Error; err != nil {
+					return err
+				}
+			}
+			if err := tx.Model(&entity.UserProfile{}).Where("user_id = ?", followerId).
+				Update("following_count", gorm.Expr("GREATEST(following_count - 1, 0)")).Error; err != nil {
+				return err
+			}
+			if err := tx.Model(&entity.UserProfile{}).Where("user_id = ?", followingId).
+				Update("follower_count", gorm.Expr("GREATEST(follower_count - 1, 0)")).Error; err != nil {
+				return err
+			}
+			return nil
+		})
+		if err != nil {
+			return nil, err
+		}
+		return &response.FollowStatus{
+			IsFollowing: false,
+			IsMutual:    false,
+			TargetUser:  us.toUserInfo(&targetUser, followerId),
+		}, nil
+	}
+
+	// 未关注，创建关注
+	isMutual := false
+	err := global.GetDB().Transaction(func(tx *gorm.DB) error {
+		newFollow := entity.UserFollow{
+			FollowerId:  followerId,
+			FollowingId: followingId,
+		}
+
+		// 检查是否为互关
+		var reverse entity.UserFollow
+		if err := tx.Where("follower_id = ? AND following_id = ?", followingId, followerId).First(&reverse).Error; err == nil {
+			newFollow.IsMutual = true
+			isMutual = true
+			if err := tx.Model(&reverse).Update("is_mutual", true).Error; err != nil {
+				return err
+			}
+		}
+
+		if err := tx.Create(&newFollow).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&entity.UserProfile{}).Where("user_id = ?", followerId).
+			Update("following_count", gorm.Expr("following_count + 1")).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&entity.UserProfile{}).Where("user_id = ?", followingId).
+			Update("follower_count", gorm.Expr("follower_count + 1")).Error; err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &response.FollowStatus{
+		IsFollowing: true,
+		IsMutual:    isMutual,
+		TargetUser:  us.toUserInfo(&targetUser, followerId),
+	}, nil
+}
+
+func (us *UserService) GetFollowers(userId uint, viewerId uint, page, pageSize int) (response.FollowList, error) {
+	var total int64
+	if err := global.GetDB().Model(&entity.UserFollow{}).Where("following_id = ?", userId).Count(&total).Error; err != nil {
+		return response.FollowList{}, err
+	}
+
+	var follows []entity.UserFollow
+	offset := (page - 1) * pageSize
+	if err := global.GetDB().Where("following_id = ?", userId).Order("created_at desc").Offset(offset).Limit(pageSize).Find(&follows).Error; err != nil {
+		return response.FollowList{}, err
+	}
+
+	items := make([]response.UserInfo, len(follows))
+	for i, f := range follows {
+		usr, err := us.getUserInstanceById(f.FollowerId)
+		if err != nil {
+			continue
+		}
+		items[i] = us.toUserInfo(usr, viewerId)
+	}
+
+	return response.FollowList{
+		Items:    items,
+		Page:     page,
+		PageSize: pageSize,
+		Total:    total,
+	}, nil
+}
+
+func (us *UserService) GetFollowing(userId uint, viewerId uint, page, pageSize int) (response.FollowList, error) {
+	var total int64
+	if err := global.GetDB().Model(&entity.UserFollow{}).Where("follower_id = ?", userId).Count(&total).Error; err != nil {
+		return response.FollowList{}, err
+	}
+
+	var follows []entity.UserFollow
+	offset := (page - 1) * pageSize
+	if err := global.GetDB().Where("follower_id = ?", userId).Order("created_at desc").Offset(offset).Limit(pageSize).Find(&follows).Error; err != nil {
+		return response.FollowList{}, err
+	}
+
+	items := make([]response.UserInfo, len(follows))
+	for i, f := range follows {
+		usr, err := us.getUserInstanceById(f.FollowingId)
+		if err != nil {
+			continue
+		}
+		items[i] = us.toUserInfo(usr, viewerId)
+	}
+
+	return response.FollowList{
+		Items:    items,
+		Page:     page,
+		PageSize: pageSize,
+		Total:    total,
+	}, nil
+}
+
+func (us *UserService) GetSetting(userId uint) (*entity.UserSetting, error) {
+	var setting entity.UserSetting
+	if err := global.GetDB().Where("user_id = ?", userId).First(&setting).Error; err != nil {
+		return nil, err
+	}
+	return &setting, nil
+}
+
+func (us *UserService) UpdateSetting(userId uint, req request.UserSettingUpdateRequest) error {
+	if req.PostPublic == nil {
+		return nil
+	}
+	return global.GetDB().Model(&entity.UserSetting{}).Where("user_id = ?", userId).
+		Update("post_public", *req.PostPublic).Error
+}
+
 func (us *UserService) DeleteUserById(id int) error {
 	return global.DB.Delete(&entity.User{}, id).Error
 }
 
 // toUserInfo 转换为 response.UserInfo，数据脱敏
-func (us *UserService) toUserInfo(usr *entity.User) response.UserInfo {
-	var postCount int64
-	global.GetDB().Model(&entity.Post{}).Where("user_id = ?", usr.ID).Count(&postCount)
-	var commentCount int64
-	global.GetDB().Model(&entity.Comment{}).Where("user_id = ?", usr.ID).Count(&commentCount)
+func (us *UserService) toUserInfo(usr *entity.User, viewerId uint) response.UserInfo {
+	var profile entity.UserProfile
+	if err := global.GetDB().Where("user_id = ?", usr.ID).First(&profile).Error; err != nil {
+		profile = entity.UserProfile{}
+	}
+
+	var isFollowed bool
+	if viewerId > 0 && viewerId != usr.ID {
+		var follow entity.UserFollow
+		if err := global.GetDB().Where("follower_id = ? AND following_id = ?", viewerId, usr.ID).First(&follow).Error; err == nil {
+			isFollowed = true
+		}
+	}
 
 	return response.UserInfo{
-		UserId:       usr.ID,
-		CreatedAt:    usr.CreatedAt,
-		UpdatedAt:    usr.UpdatedAt,
-		Username:     usr.Username,
-		Email:        usr.Email,
-		Phone:        usr.Phone,
-		Bio:          usr.Bio,
-		Avatar:       usr.Avatar,
-		Admin:        usr.Admin,
-		Role:         usr.Role,
-		PostCount:    postCount,
-		CommentCount: commentCount,
+		UserId:               usr.ID,
+		CreatedAt:            usr.CreatedAt,
+		UpdatedAt:            usr.UpdatedAt,
+		Username:             usr.Username,
+		Email:                profile.Email,
+		Phone:                profile.Phone,
+		Bio:                  profile.Bio,
+		Avatar:               profile.Avatar,
+		Admin:                usr.Admin,
+		Role:                 usr.Role,
+		Banned:               usr.Banned,
+		FollowerCount:        profile.FollowerCount,
+		FollowingCount:       profile.FollowingCount,
+		PostCount:           int64(profile.PostCount),
+		CommentCount:        int64(profile.CommentCount),
+		ReceivedLikeCount:   profile.ReceivedLikeCount,
+		ReceivedDislikeCount: profile.ReceivedDislikeCount,
+		IsFollowed:          isFollowed,
 	}
 }
 

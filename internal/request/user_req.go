@@ -39,6 +39,14 @@ type UserLoginRequest struct {
 	Password string `json:"password" binding:"required"`
 }
 
+type UserFollowRequest struct {
+	FollowingId uint `json:"following_id" binding:"required"`
+}
+
+type UserSettingUpdateRequest struct {
+	PostPublic *bool `json:"post_public"`
+}
+
 //type UserQueryRequest struct {
 //	UserId      uint   `json:"id"`
 //	Keyword string `json:"keyword"`

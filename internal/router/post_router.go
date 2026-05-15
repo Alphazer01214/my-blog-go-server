@@ -25,5 +25,7 @@ func SetupPostRouter(r *gin.Engine) {
 		protected.DELETE("/post/:id", postApi.Delete)
 		protected.POST("/post/like", postApi.Like)
 		protected.POST("/post/dislike", postApi.Dislike)
+		protected.POST("/post/favorite", postApi.Favorite)
+		protected.POST("/post/share", postApi.Share)
 	}
 }

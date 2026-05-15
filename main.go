@@ -3,11 +3,16 @@ package main
 import (
 	"fmt"
 	"log"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"blog.alphazer01214.top/cmd"
 	"blog.alphazer01214.top/internal/global"
+	"blog.alphazer01214.top/internal/keepalive"
 	"blog.alphazer01214.top/internal/middleware"
 	"blog.alphazer01214.top/internal/router"
+	"blog.alphazer01214.top/internal/service"
 	"blog.alphazer01214.top/internal/utils"
 
 	"github.com/gin-gonic/gin"
@@ -40,11 +45,39 @@ func main() {
 	router.SetupPostRouter(r)
 	router.SetupCommentRouter(r)
 	router.SetupServiceRouter(r)
+	router.SetupMarketRouter(r)
 
-	// 从配置文件读取端口启动服务器
+	// keepalive 后台任务
+	ka := keepalive.NewManager()
+
+	marketSvc := &service.Service.MarketService
+	ka.Register("market_poll", marketSvc.CacheDuration(), marketSvc.PollOnce)
+	ka.Start()
+	defer ka.Stop()
+
+	// 优雅退出
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
+	// 从配置文件读取端口启动服务器（支持 HTTP / HTTPS）
 	addr := ":" + global.Config.Server.Port
 	fmt.Printf("Starting server on %s\n", addr)
-	if err := r.Run(addr); err != nil {
-		log.Fatalf("Failed to start server: %v", err)
-	}
+
+	go func() {
+		cert := global.Config.Server.TLSCert
+		key := global.Config.Server.TLSKey
+		if cert != "" && key != "" {
+			fmt.Printf("TLS enabled, cert=%s key=%s\n", cert, key)
+			if err := r.RunTLS(addr, cert, key); err != nil {
+				log.Fatalf("Failed to start TLS server: %v", err)
+			}
+		} else {
+			if err := r.Run(addr); err != nil {
+				log.Fatalf("Failed to start server: %v", err)
+			}
+		}
+	}()
+
+	<-quit
+	fmt.Println("Shutting down server...")
 }

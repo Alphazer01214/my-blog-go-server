@@ -16,15 +16,3 @@ const (
 	Password
 	SMS
 )
-
-// RoleType 角色
-type RoleType int
-
-const (
-	Evil RoleType = iota
-	Guest
-	NormalUser
-	VIP
-	Moderator
-	TakamatsuTomori
-)

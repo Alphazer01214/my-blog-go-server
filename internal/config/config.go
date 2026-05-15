@@ -11,6 +11,9 @@ type Server struct {
 	Host string `yaml:"host" json:"host"`
 	Port string `yaml:"port" json:"port"`
 	Mode string `yaml:"mode" json:"mode"`
+
+	TLSCert string `yaml:"tls_cert" json:"tls_cert"`
+	TLSKey  string `yaml:"tls_key" json:"tls_key"`
 }
 
 type Postgres struct {
@@ -46,12 +49,18 @@ type LLM struct {
 	ModelName string `yaml:"model_name" json:"model_name"`
 }
 
+type Market struct {
+	RefreshInterval int    `yaml:"refresh_interval" json:"refresh_interval"`
+	ApiUrl          string `yaml:"api_url" json:"api_url"`
+}
+
 type Config struct {
 	Server   *Server   `yaml:"server" json:"server"`
 	Postgres *Postgres `yaml:"postgres" json:"postgres"`
 	LLM      *LLM      `yaml:"llm" json:"llm"`
 	Redis    *Redis    `yaml:"redis" json:"redis"`
 	JWT      *JWT      `yaml:"jwt" json:"jwt"`
+	Market   *Market   `yaml:"market" json:"market"`
 }
 
 func (dc *Postgres) GetDSN() string {
@@ -77,6 +86,7 @@ func LoadConfig() *Config {
 		LLM:      &LLM{},
 		Redis:    &Redis{},
 		JWT:      &JWT{},
+		Market:   &Market{},
 	}
 
 	if err := yaml.Unmarshal(cfgFile, &cfg); err != nil {

@@ -25,15 +25,15 @@ func (pa *PostApi) Create(c *gin.Context) {
 	}
 	userId := cl.UserId
 	post := &entity.Post{
-		EnvInfo:  req.Env,
-		UserId:   userId,
-		Title:    req.Title,
-		Cover:    req.Cover,
-		Tags:     req.Tags,
-		Category: req.Category,
-		Keywords: req.Keywords,
-		Content:  req.Content,
-		Public:   req.Public,
+		EnvInfo:    req.Env,
+		UserId:     userId,
+		Title:      req.Title,
+		Cover:      req.Cover,
+		Tags:       req.Tags,
+		CategoryId: req.CategoryId,
+		Keywords:   req.Keywords,
+		Content:    req.Content,
+		Public:     req.Public,
 	}
 	r, err := postService.Create(post)
 	if err != nil {
@@ -178,6 +178,51 @@ func (pa *PostApi) Dislike(c *gin.Context) {
 	}
 
 	response.SuccessWithMsg(c, "dislike success")
+}
+
+func (pa *PostApi) Favorite(c *gin.Context) {
+	var req request.PostActionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.ErrorWithMsg(c, "invalid request")
+		return
+	}
+
+	cl, err := Authorize(c)
+	if err != nil {
+		response.ErrorWithMsg(c, err.Error())
+		return
+	}
+
+	if err := postService.Favorite(req.PostId, cl.UserId); err != nil {
+		response.ErrorWithMsg(c, err.Error())
+		return
+	}
+
+	response.SuccessWithMsg(c, "favorite success")
+}
+
+func (pa *PostApi) Share(c *gin.Context) {
+	var req request.PostShareRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.ErrorWithMsg(c, "invalid request")
+		return
+	}
+
+	cl, err := Authorize(c)
+	if err != nil {
+		response.ErrorWithMsg(c, err.Error())
+		return
+	}
+
+	if err := postService.Share(req.PostId, cl.UserId, entity.ShareInfo{
+		ShareTo:      req.ShareTo,
+		ShareMessage: req.ShareMessage,
+	}); err != nil {
+		response.ErrorWithMsg(c, err.Error())
+		return
+	}
+
+	response.SuccessWithMsg(c, "share success")
 }
 
 func (pa *PostApi) Update(c *gin.Context) {

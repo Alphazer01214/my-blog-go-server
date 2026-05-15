@@ -1,14 +1,14 @@
 package request
 
 import (
-	"blog.alphazer01214.top/internal/constant"
+	"blog.alphazer01214.top/internal/entity"
 	"github.com/golang-jwt/jwt/v5"
 )
 
 type BaseClaims struct {
 	UserId   uint
 	Username string
-	RoleType constant.RoleType
+	RoleType entity.RoleType
 }
 
 type AccessClaims struct {

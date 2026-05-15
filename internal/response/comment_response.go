@@ -12,6 +12,7 @@ type CommentList struct {
 }
 
 // Comment 用于 response 的评论结构体，存在一个递归嵌套，放所有 root id 或 parent id 是该评论的评论
+// 是一个树状结构
 type Comment struct {
 	CommentId       uint      `json:"comment_id"`
 	UserId          uint      `json:"user_id"`
@@ -24,9 +25,9 @@ type Comment struct {
 
 	Author UserInfo `json:"author,omitempty"`
 
-	Likes    uint `json:"likes"`
-	Dislikes uint `json:"dislikes"`
-	Replies  uint `json:"replies"`
+	Likes    int `json:"likes"`
+	Dislikes int `json:"dislikes"`
+	Replies  int `json:"replies"`
 
 	IsLiked    bool `json:"is_liked"`
 	IsDisliked bool `json:"is_disliked"`

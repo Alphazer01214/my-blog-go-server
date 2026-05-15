@@ -3,33 +3,66 @@ package entity
 import (
 	"time"
 
-	"blog.alphazer01214.top/internal/constant"
 	"gorm.io/gorm"
 )
 
+type RoleType int
+
+const (
+	RoleEvil RoleType = iota
+	RoleGuest
+	RoleNormalUser
+	RoleVIP
+	RoleModerator
+	RoleTakamatsuTomori
+)
+
 type User struct {
-	// gorm.Model 已经包含了 ID, CreatedAt, UpdatedAt, DeletedAt
-	//gorm.Model
 	ID        uint `gorm:"primarykey" json:"id"`
 	CreatedAt time.Time
 	UpdatedAt time.Time
 	DeletedAt gorm.DeletedAt `gorm:"index"`
-	// UserId        int    `json:"id"`
+
 	Username string `gorm:"size:64;uniqueIndex;not null" json:"username"`
+	// Avatar: url
+	Admin  bool     `json:"admin"`
+	Role   RoleType `json:"role"`
+	Banned bool     `json:"banned"`
+
+	Password string `json:"-"` // 这表示忽略 Password 字段
+}
+
+// UserProfile 对外公开
+type UserProfile struct {
+	UserId   uint   `json:"user_id" gorm:"primaryKey"`
+	Username string `json:"username"`
 	Email    string `gorm:"size:64" json:"email"`
 	Phone    string `gorm:"size:64" json:"phone"`
 	Bio      string `gorm:"type:text" json:"bio"`
-	// Avatar: url
-	Avatar string `gorm:"size:114" json:"avatar"`
-	// CreatedAt time.Time
-	// UpdatedAt time.Time
-	Admin  bool              `json:"admin"`
-	Role   constant.RoleType `json:"role"`
-	Banned bool              `json:"banned"`
+	Avatar   string `gorm:"size:114" json:"avatar"`
 
-	//Agents datatypes.JSONArrayExpression `gorm:"type:json" json:"agents"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 
-	Password string `json:"-"` // 这表示忽略 Password 字段
+	FollowerCount        int `json:"follower_count" gorm:"default:0"`
+	FollowingCount       int `json:"following_count" gorm:"default:0"`
+	PostCount            int `json:"post_count" gorm:"default:0"`
+	CommentCount         int `json:"comment_count" gorm:"default:0"`          // 该用户发的评论数
+	ReceivedLikeCount    int `json:"received_like_count" gorm:"default:0"`    // 获赞
+	ReceivedDislikeCount int `json:"received_dislike_count" gorm:"default:0"` // 踩
+}
+
+type UserSetting struct {
+	UserId     uint `json:"user_id" gorm:"primaryKey"`
+	PostPublic bool `json:"post_public" gorm:"default:true"`
+}
+
+type UserFollow struct {
+	FollowerId  uint `json:"follower_id" gorm:"primaryKey"`
+	FollowingId uint `json:"following_id" gorm:"primaryKey"`
+	IsMutual    bool `json:"is_mutual"`
+
+	CreatedAt time.Time `json:"created_at"`
 }
 
 type TokenBlacklist struct {

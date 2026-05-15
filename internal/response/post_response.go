@@ -7,25 +7,28 @@ import (
 )
 
 type PostDetail struct {
-	ID           uint           `json:"id"`
-	CreatedAt    time.Time      `json:"created_at"`
-	UpdatedAt    time.Time      `json:"updated_at"`
-	Title        string         `json:"title"`
-	Cover        string         `json:"cover"`
-	UserId       uint           `json:"user_id"`
-	Author       UserInfo       `json:"author,omitempty"`
-	Tags         datatypes.JSON `json:"tags"`
-	Category     string         `json:"category"`
-	Keywords     datatypes.JSON `json:"keywords"`
-	Content      string         `json:"content"`
-	ViewCount    int            `json:"view_count"`
-	CommentCount int            `json:"comment_count"`
-	LikeCount    int            `json:"like_count"`
-	DislikeCount int            `json:"dislike_count"`
-
-	IsLiked    bool `json:"is_liked"`
-	IsDisliked bool `json:"is_disliked"`
-	Public     bool `json:"public"`
+	ID            uint           `json:"id"`
+	CreatedAt     time.Time      `json:"created_at"`
+	UpdatedAt     time.Time      `json:"updated_at"`
+	Title         string         `json:"title"`
+	Cover         string         `json:"cover"`
+	UserId        uint           `json:"user_id"`
+	Author        UserInfo       `json:"author,omitempty"`
+	Tags          datatypes.JSON `json:"tags"`
+	CategoryId    uint           `json:"category_id"`
+	CategoryName  string         `json:"category_name"`
+	Keywords      datatypes.JSON `json:"keywords"`
+	Content       string         `json:"content"`
+	ViewCount     int            `json:"view_count"`
+	CommentCount  int            `json:"comment_count"`
+	LikeCount     int            `json:"like_count"`
+	DislikeCount  int            `json:"dislike_count"`
+	FavoriteCount int            `json:"favorite_count"`
+	ShareCount    int            `json:"share_count"`
+	Public        bool           `json:"public"`
+	IsLiked       bool           `json:"is_liked"`
+	IsDisliked    bool           `json:"is_disliked"`
+	IsFavorited   bool           `json:"is_favorited"`
 }
 
 type PostList struct {

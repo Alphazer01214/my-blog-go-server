@@ -26,6 +26,8 @@ func SetupUserRouter(r *gin.Engine) {
 		public.GET("/user/:id", userApi.QueryUserById)
 		public.GET("/user/:id/posts", userApi.QueryUserPosts)
 		public.GET("/user/:id/comments", userApi.QueryUserComments)
+		public.GET("/user/:id/followers", userApi.GetFollowers)
+		public.GET("/user/:id/following", userApi.GetFollowing)
 		public.GET("/all_users", userApi.GetAllUsers)
 	}
 
@@ -35,6 +37,9 @@ func SetupUserRouter(r *gin.Engine) {
 		protected.POST("/update_password", userApi.UpdatePassword)
 		protected.POST("/update_profile", userApi.UpdateProfile)
 		protected.GET("/me", userApi.CurrentUser)
+		protected.POST("/user/follow", userApi.Follow)
+		protected.GET("/settings", userApi.GetSettings)
+		protected.POST("/settings", userApi.UpdateSettings)
 	}
 
 }

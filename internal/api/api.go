@@ -14,6 +14,7 @@ type Apis struct {
 	PostApi
 	CommentApi
 	AiApi
+	MarketApi
 }
 
 var Api = new(Apis)
@@ -23,6 +24,7 @@ var (
 	postService    = service.Service.PostService
 	commentService = service.Service.CommentService
 	aiService      = service.Service.AIService
+	marketService  = service.Service.MarketService
 )
 
 func Authorize(c *gin.Context) (request.AccessClaims, error) {
