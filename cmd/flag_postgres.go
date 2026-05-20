@@ -19,6 +19,8 @@ func MigrateDB() error {
 		&entity.User{}, &entity.UserProfile{}, &entity.UserSetting{}, &entity.UserFollow{},
 		&entity.Post{}, &entity.Comment{}, &entity.Tag{}, &entity.Category{},
 		&entity.Action{},
-		&entity.TokenBlacklist{}, &entity.Agent{},
-		&entity.ChatSession{}, &entity.Notification{})
+		&entity.TokenBlacklist{}, &entity.Agent{}, &entity.ChatSession{},
+		&entity.Video{},
+		&entity.UploadSession{}, &entity.UploadedChunk{},
+		&entity.Notification{})
 }

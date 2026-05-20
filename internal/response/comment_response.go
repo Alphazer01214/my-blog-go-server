@@ -5,10 +5,10 @@ import (
 )
 
 type CommentList struct {
-	Items    []Comment `json:"items"`
-	Page     int       `json:"page"`
-	PageSize int       `json:"page_size"`
-	Total    int64     `json:"total"`
+	Items    []*Comment `json:"items"`
+	Page     int        `json:"page"`
+	PageSize int        `json:"page_size"`
+	Total    int64      `json:"total"`
 }
 
 // Comment 用于 response 的评论结构体，存在一个递归嵌套，放所有 root id 或 parent id 是该评论的评论
@@ -25,12 +25,12 @@ type Comment struct {
 
 	Author UserInfo `json:"author,omitempty"`
 
-	Likes    int `json:"likes"`
-	Dislikes int `json:"dislikes"`
-	Replies  int `json:"replies"`
+	LikeCount    int `json:"like_count"`
+	DislikeCount int `json:"dislike_count"`
+	ReplyCount   int `json:"reply_count"`
 
 	IsLiked    bool `json:"is_liked"`
 	IsDisliked bool `json:"is_disliked"`
 
-	ReplyComments []Comment `json:"reply_comments"`
+	ReplyComments []*Comment `json:"reply_comments"`
 }

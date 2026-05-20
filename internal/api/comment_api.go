@@ -1,8 +1,10 @@
 package api
 
 import (
+	"fmt"
 	"strconv"
 
+	"blog.alphazer01214.top/internal/constant"
 	"blog.alphazer01214.top/internal/entity"
 	"blog.alphazer01214.top/internal/request"
 	"blog.alphazer01214.top/internal/response"
@@ -27,7 +29,8 @@ func (ca *CommentApi) Create(c *gin.Context) {
 	comment := &entity.Comment{
 		EnvInfo:         req.Env,
 		UserId:          cl.UserId,
-		PostId:          req.PostId,
+		TargetType:      constant.TargetPost,
+		TargetId:        req.PostId,
 		Content:         req.Content,
 		RootCommentId:   req.RootCommentId,
 		ParentCommentId: req.ParentCommentId,
@@ -42,7 +45,7 @@ func (ca *CommentApi) Create(c *gin.Context) {
 	response.SuccessWithDetail(c, r, "comment success")
 }
 
-func (ca *CommentApi) List(c *gin.Context) {
+func (ca *CommentApi) ListCommentsByPostId(c *gin.Context) {
 	postId, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
 		response.ErrorWithMsg(c, "invalid post id")
@@ -50,44 +53,60 @@ func (ca *CommentApi) List(c *gin.Context) {
 	}
 
 	page, pageSize := parsePagination(c)
-	viewerId := GetUserId(c)
-
-	comments, total, err := commentService.QueryByPost(uint(postId), page, pageSize, viewerId)
+	cl, err := Authorize(c)
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
+
+	comments, total, err := commentService.GetCommentsByPostId(uint(postId), page, pageSize, cl.UserId)
+	if err != nil {
+		response.ErrorWithMsg(c, err.Error())
+		return
+	}
+	msg := fmt.Sprintf("user %v: %v query success", cl.UserId, cl.Username)
 
 	response.SuccessWithDetail(c, response.CommentList{
 		Items:    comments,
 		Page:     page,
 		PageSize: pageSize,
 		Total:    total,
-	}, "query success")
+	}, msg)
 }
 
-func (ca *CommentApi) ListReplies(c *gin.Context) {
-	rootId, err := strconv.ParseUint(c.Param("id"), 10, 64)
+func (ca *CommentApi) ListCommentsByUserId(c *gin.Context) {
+	userId, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	page, pageSize := parsePagination(c)
 	if err != nil {
-		response.ErrorWithMsg(c, "invalid comment id")
+		response.ErrorWithMsg(c, "invalid user id")
 		return
 	}
-
-	page, pageSize := parsePagination(c)
-	viewerId := GetUserId(c)
-
-	comments, total, err := commentService.QueryReplies(uint(rootId), page, pageSize, viewerId)
+	userSetting, err := userService.GetSetting(uint(userId))
+	if err != nil {
+		response.ErrorWithMsg(c, "can't get user setting")
+		return
+	}
+	if !userSetting.CommentPublic {
+		response.SuccessWithDetail(c, response.CommentList{
+			Items:    []*response.Comment{},
+			Page:     page,
+			PageSize: pageSize,
+			Total:    0,
+		}, "user comment is private")
+		return
+	}
+	comments, total, err := commentService.GetCommentsByUserId(uint(userId), page, pageSize)
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
-
 	response.SuccessWithDetail(c, response.CommentList{
 		Items:    comments,
 		Page:     page,
 		PageSize: pageSize,
 		Total:    total,
 	}, "query success")
+
 }
 
 func (ca *CommentApi) Delete(c *gin.Context) {

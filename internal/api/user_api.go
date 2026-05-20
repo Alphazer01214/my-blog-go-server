@@ -1,9 +1,11 @@
 package api
 
 import (
+	"context"
 	"strconv"
 
 	"blog.alphazer01214.top/internal/entity"
+	"blog.alphazer01214.top/internal/global"
 	"blog.alphazer01214.top/internal/request"
 	"blog.alphazer01214.top/internal/response"
 	"blog.alphazer01214.top/internal/utils"
@@ -26,7 +28,10 @@ func (u *UserApi) Register(c *gin.Context) {
 	}
 	usr := &entity.User{
 		Username: req.Username,
-		Password: req.Password,
+		Password: req.Password, // original password
+		Admin:    false,
+		Role:     entity.RoleNormalUser,
+		Banned:   false,
 	}
 	rp, err := userService.Register(usr, req.Env)
 	if err != nil {
@@ -68,10 +73,15 @@ func (u *UserApi) Logout(c *gin.Context) {
 	}
 	if accessToken == "" {
 		response.ErrorWithMsg(c, "not login yet")
+		return
 	}
 	if err := utils.TokenJoinBlacklist(refreshToken); err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
+	}
+	claims, err := utils.ParseRefreshToken(refreshToken)
+	if err == nil {
+		global.GetRedis().Del(context.Background(), strconv.Itoa(int(claims.Id)))
 	}
 	utils.RemoveRefreshTokenCookie(c)
 	utils.RemoveAccessTokenCookie(c)
@@ -152,52 +162,12 @@ func (u *UserApi) QueryUserById(c *gin.Context) {
 }
 
 func (u *UserApi) GetAllUsers(c *gin.Context) {
-	scnt := c.Query("tok_k")
-	_, err := strconv.ParseInt(scnt, 10, 64)
-	if err != nil {
-	}
 	usrInfo, err := userService.GetAllUserInfo(GetUserId(c))
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
 	response.SuccessWithDetail(c, usrInfo, "Query all users successful")
-}
-
-func (u *UserApi) QueryUserPosts(c *gin.Context) {
-	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
-	if err != nil {
-		response.ErrorWithMsg(c, "invalid user id")
-		return
-	}
-	page, pageSize := parsePagination(c)
-	posts, err := userService.GetPostsByUser(uint(id), page, pageSize)
-	if err != nil {
-		response.ErrorWithMsg(c, err.Error())
-		return
-	}
-	response.SuccessWithDetail(c, posts, "query user posts success")
-}
-
-func (u *UserApi) QueryUserComments(c *gin.Context) {
-	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
-	if err != nil {
-		response.ErrorWithMsg(c, "invalid user id")
-		return
-	}
-	page, pageSize := parsePagination(c)
-	viewerId := GetUserId(c)
-	comments, total, err := userService.GetCommentsByUser(uint(id), viewerId, page, pageSize)
-	if err != nil {
-		response.ErrorWithMsg(c, err.Error())
-		return
-	}
-	response.SuccessWithDetail(c, response.CommentList{
-		Items:    comments,
-		Page:     page,
-		PageSize: pageSize,
-		Total:    total,
-	}, "query user comments success")
 }
 
 func (u *UserApi) Follow(c *gin.Context) {
@@ -263,7 +233,10 @@ func (u *UserApi) GetSettings(c *gin.Context) {
 		return
 	}
 	response.SuccessWithDetail(c, response.UserSettingResponse{
-		PostPublic: setting.PostPublic,
+		PostPublic:         setting.PostPublic,
+		CommentPublic:      setting.CommentPublic,
+		FollowListPublic:   setting.FollowListPublic,
+		FollowerListPublic: setting.FollowerListPublic,
 	}, "get settings success")
 }
 

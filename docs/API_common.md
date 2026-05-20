@@ -57,6 +57,17 @@ http://<host>:<port>
 }
 ```
 
+## 用户设置字段
+
+用户隐私设置包含以下字段：
+
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `post_public` | bool | true | 发帖是否默认公开 |
+| `comment_public` | bool | true | 评论列表是否公开 |
+| `follow_list_public` | bool | true | 关注列表是否公开 |
+| `follower_list_public` | bool | true | 粉丝列表是否公开 |
+
 ## EnvInfo 环境信息
 
 部分接口请求和响应中包含 `env` 字段，用于记录客户端环境：

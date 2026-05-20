@@ -25,10 +25,14 @@ type PostDetail struct {
 	DislikeCount  int            `json:"dislike_count"`
 	FavoriteCount int            `json:"favorite_count"`
 	ShareCount    int            `json:"share_count"`
-	Public        bool           `json:"public"`
-	IsLiked       bool           `json:"is_liked"`
-	IsDisliked    bool           `json:"is_disliked"`
-	IsFavorited   bool           `json:"is_favorited"`
+
+	Public        bool `json:"public"`
+	ForbidComment bool `json:"forbid_comment"`
+	ForbidShare   bool `json:"forbid_share"`
+
+	IsLiked     bool `json:"is_liked"`
+	IsDisliked  bool `json:"is_disliked"`
+	IsFavorited bool `json:"is_favorited"`
 }
 
 type PostList struct {

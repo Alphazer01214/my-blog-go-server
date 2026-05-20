@@ -20,8 +20,8 @@ type UserInfo struct {
 	Banned               bool            `json:"banned"`
 	FollowerCount        int             `json:"follower_count"`
 	FollowingCount       int             `json:"following_count"`
-	PostCount            int64           `json:"post_count"`
-	CommentCount         int64           `json:"comment_count"`
+	PostCount            int             `json:"post_count"`
+	CommentCount         int             `json:"comment_count"`
 	ReceivedLikeCount    int             `json:"received_like_count"`
 	ReceivedDislikeCount int             `json:"received_dislike_count"`
 	IsFollowed           bool            `json:"is_followed"`
@@ -54,5 +54,8 @@ type FollowList struct {
 }
 
 type UserSettingResponse struct {
-	PostPublic bool `json:"post_public"`
+	PostPublic         bool `json:"post_public"`
+	CommentPublic      bool `json:"comment_public"`
+	FollowListPublic   bool `json:"follow_list_public"`
+	FollowerListPublic bool `json:"follower_list_public"`
 }

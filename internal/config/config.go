@@ -12,8 +12,10 @@ type Server struct {
 	Port string `yaml:"port" json:"port"`
 	Mode string `yaml:"mode" json:"mode"`
 
-	TLSCert string `yaml:"tls_cert" json:"tls_cert"`
-	TLSKey  string `yaml:"tls_key" json:"tls_key"`
+	TLSCert         string `yaml:"tls_cert" json:"tls_cert"`
+	TLSKey          string `yaml:"tls_key" json:"tls_key"`
+	UploadDir       string `yaml:"upload_dir" json:"upload_dir"`
+	UploadChunkSize int64  `yaml:"upload_chunk_size" json:"upload_chunk_size"`
 }
 
 type Postgres struct {

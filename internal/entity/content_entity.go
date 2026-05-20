@@ -3,6 +3,7 @@ package entity
 import (
 	"time"
 
+	"blog.alphazer01214.top/internal/constant"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 )
@@ -29,7 +30,9 @@ type Post struct {
 	FavoriteCount int `json:"favorite_count"`
 	ShareCount    int `json:"share_count"`
 
-	Public bool `json:"public"`
+	Public        bool `json:"public"`
+	ForbidComment bool `json:"forbid_comment"`
+	ForbidShare   bool `json:"forbid_share"`
 }
 
 type Tag struct {
@@ -39,16 +42,18 @@ type Tag struct {
 }
 
 type Category struct {
-	ID          uint   `gorm:"primaryKey" json:"id"`
-	Name        string `json:"name" gorm:"uniqueKey"`
-	Description string `json:"description"`
-	PostCount   int    `json:"post_count" gorm:"default:0"`
+	ID           uint   `gorm:"primaryKey" json:"id"`
+	Name         string `json:"name" gorm:"uniqueIndex"`
+	Description  string `json:"description"`
+	ContentCount int    `json:"content_count" gorm:"default:0"`
 }
 
 type Comment struct {
 	ID     uint `gorm:"primaryKey" json:"id"`
 	UserId uint `json:"user_id"`
-	PostId uint `json:"post_id"`
+
+	TargetType constant.TargetType `json:"target_type"`
+	TargetId   uint                `json:"target_id"`
 	// RootCommentId 根评论id，如果为0，则表示该评论为根评论
 	RootCommentId   uint           `json:"root_comment_id"`
 	ParentCommentId uint           `json:"parent_comment_id"`
@@ -62,4 +67,35 @@ type Comment struct {
 	LikeCount    int `json:"like_count"`
 	DislikeCount int `json:"dislike_count"`
 	ReplyCount   int `json:"reply_count"`
+}
+
+type Video struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+
+	VideoSrcUrl   string `json:"video_src_url"`
+	VideoCoverUrl string `json:"video_cover_url"`
+	Title         string `gorm:"type:varchar(255)" json:"title"`
+	Description   string `json:"description"`
+	Duration      int    `json:"duration"` // 视频长度 秒
+	Size          int64  `json:"size"`
+	MimeType      string `gorm:"size:128" json:"mime_type"`
+
+	UserId  uint `json:"user_id"`
+	EnvInfo `json:"env"`
+
+	Tags       datatypes.JSON `json:"tags"`
+	CategoryId uint           `json:"category_id"`
+
+	ViewCount     int `json:"view_count"`
+	LikeCount     int `json:"like_count"`
+	DislikeCount  int `json:"dislike_count"`
+	CommentCount  int `json:"comment_count"`
+	FavoriteCount int `json:"favorite_count"`
+	ShareCount    int `json:"share_count"`
+
+	Public        bool `json:"public"`
+	ForbidComment bool `json:"forbid_comment"`
+	ForbidShare   bool `json:"forbid_share"`
 }

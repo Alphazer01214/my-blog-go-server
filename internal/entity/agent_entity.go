@@ -13,11 +13,11 @@ type Agent struct {
 	UpdatedAt time.Time      `json:"updated_at"`
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
 	// Uid: owner's id
-	UserId uint `gorm:"uniqueKey" json:"user_id"`
+	UserId uint `gorm:"uniqueIndex:idx_user_agent" json:"user_id"`
 
 	// LLM configs
 
-	Name      string `gorm:"uniqueKey" json:"name"`
+	Name      string `gorm:"uniqueIndex:idx_user_agent" json:"name"`
 	BaseUrl   string `json:"base_url"`
 	ApiKey    string `json:"api_key"`
 	ModelName string `json:"model_name"`
@@ -29,12 +29,15 @@ type Agent struct {
 	Temperature float64 `json:"temperature"`
 	Thinking    bool    `json:"thinking"`
 
+	Tools datatypes.JSONMap `json:"tools"`
+
 	// User personalize
 	//
 	Prompts  datatypes.JSONMap `json:"prompts"`
 	Memories datatypes.JSONMap `json:"memories"`
 }
 
+// Session 在内存中
 type Session struct {
 	UUID         string        `json:"uuid"`
 	UserId       uint          `json:"user_id"`
@@ -44,6 +47,7 @@ type Session struct {
 	UpdateAt     int64         `json:"update_at"`
 }
 
+// ChatSession 在数据库中
 type ChatSession struct {
 	ID        uint           `gorm:"primaryKey" json:"id"`
 	CreatedAt time.Time      `json:"created_at"`
@@ -58,7 +62,19 @@ type ChatSession struct {
 
 type ChatMessage struct {
 	// Role: user or model
-	Role    string `json:"role"`
-	Content string `json:"content"`
-	Time    int64  `json:"time"`
+	Role     string `json:"role"`
+	Content  string `json:"content"`
+	IsDone   bool   `json:"is_done"`
+	IsError  bool   `json:"is_error"`
+	ErrorMsg string `json:"error_msg"`
+	Time     int64  `json:"time"`
 }
+
+//type StreamChatChunk struct {
+//	SessionId string `json:"session_id"`
+//	Role      string `json:"role"`
+//	IsDone    bool   `json:"is_done"`
+//	IsError   bool   `json:"is_error"`
+//	ErrorMsg  string `json:"error_msg"`
+//	Content   string `json:"content"`
+//}

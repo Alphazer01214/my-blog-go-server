@@ -16,13 +16,13 @@ import (
 // JWTAuthMiddleware JWT 认证中间件
 func JWTAuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		fmt.Println("JWT auth middleware")
+		fmt.Println("================JWT auth middleware================")
 		accessToken := utils.GetAccessTokenCookie(c)
 		refreshToken := utils.GetRefreshTokenCookie(c)
 
 		if yes, err := utils.IsTokenBlacklisted(refreshToken); err == nil && yes {
 			// 在 blacklist
-			fmt.Printf("blacklist token: %v \n", refreshToken)
+			fmt.Printf("[JWT auth middleware] blacklist token: %v \n", refreshToken)
 			utils.RemoveRefreshTokenCookie(c)
 			response.ErrorAuth(c, "Invalid token")
 			c.Abort()
@@ -58,7 +58,13 @@ func JWTAuthMiddleware() gin.HandlerFunc {
 					Username: user.Username,
 					RoleType: user.Role,
 				})
-				accessToken := utils.GenerateAccessTokenFromClaims(accessClaims)
+				accessToken, err := utils.GenerateAccessTokenFromClaims(accessClaims)
+				if err != nil {
+					utils.RemoveRefreshTokenCookie(c)
+					response.ErrorAuth(c, "Token generation failed")
+					c.Abort()
+					return
+				}
 				c.Header("access-token", accessToken)
 				c.Header("access-expire-at", strconv.FormatInt(accessClaims.ExpiresAt.Unix(), 10))
 
@@ -76,7 +82,7 @@ func JWTAuthMiddleware() gin.HandlerFunc {
 
 		c.Set("claims", claims)
 		c.Set("user_id", claims.UserId)
-		fmt.Printf("claims: %v\n", claims)
+		fmt.Printf("[JWT auth middleware] claims(base claims, register claims): %v\n", claims)
 		c.Next()
 	}
 }

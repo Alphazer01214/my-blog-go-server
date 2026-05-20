@@ -18,7 +18,7 @@ const (
 )
 
 type User struct {
-	ID        uint `gorm:"primarykey" json:"id"`
+	ID        uint `gorm:"primaryKey" json:"id"`
 	CreatedAt time.Time
 	UpdatedAt time.Time
 	DeletedAt gorm.DeletedAt `gorm:"index"`
@@ -32,7 +32,7 @@ type User struct {
 	Password string `json:"-"` // 这表示忽略 Password 字段
 }
 
-// UserProfile 对外公开
+// UserProfile 对外公开, main page
 type UserProfile struct {
 	UserId   uint   `json:"user_id" gorm:"primaryKey"`
 	Username string `json:"username"`
@@ -53,8 +53,11 @@ type UserProfile struct {
 }
 
 type UserSetting struct {
-	UserId     uint `json:"user_id" gorm:"primaryKey"`
-	PostPublic bool `json:"post_public" gorm:"default:true"`
+	UserId             uint `json:"user_id" gorm:"primaryKey"`
+	PostPublic         bool `json:"post_public" gorm:"default:true"`
+	CommentPublic      bool `json:"comment_public" gorm:"default:true"`
+	FollowListPublic   bool `json:"follow_list_public" gorm:"default:true"`
+	FollowerListPublic bool `json:"follower_list_public" gorm:"default:true"`
 }
 
 type UserFollow struct {

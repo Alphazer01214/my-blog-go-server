@@ -15,6 +15,8 @@ type Apis struct {
 	CommentApi
 	AiApi
 	MarketApi
+	FileApi
+	TomoriApi
 }
 
 var Api = new(Apis)
@@ -25,6 +27,7 @@ var (
 	commentService = service.Service.CommentService
 	aiService      = service.Service.AIService
 	marketService  = service.Service.MarketService
+	fileService    = service.Service.FileService
 )
 
 func Authorize(c *gin.Context) (request.AccessClaims, error) {
@@ -49,7 +52,9 @@ func GetUserId(c *gin.Context) uint {
 		return 0
 	}
 	if cl, ok := claims.(request.AccessClaims); ok {
+		fmt.Printf("[Auth] current user id: %v\n", cl.UserId)
 		return cl.UserId
 	}
+	fmt.Println("[Auth] no claims")
 	return 0
 }

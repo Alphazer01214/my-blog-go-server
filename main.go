@@ -46,6 +46,8 @@ func main() {
 	router.SetupCommentRouter(r)
 	router.SetupServiceRouter(r)
 	router.SetupMarketRouter(r)
+	router.SetupFileRouter(r)
+	router.SetupTomoriRouter(r)
 
 	// keepalive 后台任务
 	ka := keepalive.NewManager()
@@ -64,18 +66,18 @@ func main() {
 	fmt.Printf("Starting server on %s\n", addr)
 
 	go func() {
-		cert := global.Config.Server.TLSCert
-		key := global.Config.Server.TLSKey
-		if cert != "" && key != "" {
-			fmt.Printf("TLS enabled, cert=%s key=%s\n", cert, key)
-			if err := r.RunTLS(addr, cert, key); err != nil {
-				log.Fatalf("Failed to start TLS server: %v", err)
-			}
-		} else {
-			if err := r.Run(addr); err != nil {
-				log.Fatalf("Failed to start server: %v", err)
-			}
+		//cert := global.Config.Server.TLSCert
+		//key := global.Config.Server.TLSKey
+		//if cert != "" && key != "" {
+		//	fmt.Printf("TLS enabled, cert=%s key=%s\n", cert, key)
+		//	if err := r.RunTLS(addr, cert, key); err != nil {
+		//		log.Fatalf("Failed to start TLS server: %v", err)
+		//	}
+		//} else {
+		if err := r.Run(addr); err != nil {
+			log.Fatalf("Failed to start server: %v", err)
 		}
+		//}
 	}()
 
 	<-quit

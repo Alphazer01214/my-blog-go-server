@@ -70,14 +70,13 @@ func (pa *PostApi) QueryOneById(c *gin.Context) {
 		response.ErrorWithMsg(c, "invalid id")
 		return
 	}
-	post, err := postService.QueryOneById(uint(id), viewerId)
+	post, err := postService.GetPostByPostId(uint(id), viewerId)
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
 	if !post.Public && viewerId != post.UserId {
 		post.Content = "this is private post"
-		return
 	}
 	response.SuccessWithDetail(c, post, "query success")
 }
@@ -93,7 +92,7 @@ func (pa *PostApi) QueryAll(c *gin.Context) {
 
 	//fmt.Printf("current viewer id: %v", viewerId)
 
-	postList, err := postService.QueryAll(page, pageSize, viewerId)
+	postList, err := postService.GetAllPosts(page, pageSize, viewerId)
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
@@ -106,9 +105,19 @@ func (pa *PostApi) QueryAll(c *gin.Context) {
 	}
 	response.SuccessWithDetail(c, postList, "query success")
 }
-
-func (pa *PostApi) EvilQuery(c *gin.Context) {
-
+func (pa *PostApi) ListPostsByUserId(c *gin.Context) {
+	userId, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		response.ErrorWithMsg(c, "invalid user id")
+		return
+	}
+	page, pageSize := parsePagination(c)
+	postList, err := postService.GetPostsByUserId(uint(userId), page, pageSize)
+	if err != nil {
+		response.ErrorWithMsg(c, err.Error())
+		return
+	}
+	response.SuccessWithDetail(c, postList, "query success")
 }
 
 func (pa *PostApi) Delete(c *gin.Context) {
@@ -122,7 +131,7 @@ func (pa *PostApi) Delete(c *gin.Context) {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
-	post, err := postService.QueryOneById(uint(id), 0)
+	post, err := postService.GetPostByPostId(uint(id), 0)
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
@@ -237,7 +246,7 @@ func (pa *PostApi) Update(c *gin.Context) {
 		return
 	}
 	userId := cl.UserId
-	post, err := postService.QueryOneById(req.Id, 0)
+	post, err := postService.GetPostByPostId(req.Id, 0)
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return

@@ -82,8 +82,14 @@ func (us *UserService) GenerateToken(user *entity.User) (*response.Token, error)
 
 	accessClaims := utils.GenerateAccessClaims(baseClaims)
 	refreshClaims := utils.GenerateRefreshClaims(baseClaims)
-	accessToken := utils.GenerateAccessTokenFromClaims(accessClaims)
-	refreshToken := utils.GenerateRefreshTokenFromClaims(refreshClaims)
+	accessToken, err := utils.GenerateAccessTokenFromClaims(accessClaims)
+	if err != nil {
+		return nil, err
+	}
+	refreshToken, err := utils.GenerateRefreshTokenFromClaims(refreshClaims)
+	if err != nil {
+		return nil, err
+	}
 
 	refreshTokenRecord, _ := utils.GetRefreshTokenRedis(user.ID)
 
@@ -179,76 +185,12 @@ func (us *UserService) UpdateUserPassword(id uint, oldPassword string, newPasswo
 		return nil, errors.New("wrong password")
 	}
 	hashedPassword := utils.EncryptPassword(newPassword)
-	if err := global.DB.Model(&entity.User{}).Where("id = ?", id).Update("password", hashedPassword).Error; err != nil {
+	if err := global.GetDB().Model(&entity.User{}).Where("id = ?", id).Update("password", hashedPassword).Error; err != nil {
 		return nil, err
 	}
 	return &response.UserUpdate{
 		Env: env,
 	}, nil
-}
-
-func (us *UserService) GetPostsByUser(userId uint, page, pageSize int) (response.PostList, error) {
-	return Service.PostService.GetPostsByUser(userId, page, pageSize)
-}
-
-func (us *UserService) GetCommentsByUser(userId uint, viewerId uint, page, pageSize int) ([]response.Comment, int64, error) {
-	var comments []entity.Comment
-	var total int64
-	db := global.GetDB().Model(&entity.Comment{}).Where("user_id = ?", userId)
-	if err := db.Count(&total).Error; err != nil {
-		return nil, 0, err
-	}
-	offset := (page - 1) * pageSize
-	if err := db.Order("created_at desc").Offset(offset).Limit(pageSize).Find(&comments).Error; err != nil {
-		return nil, 0, err
-	}
-
-	author, err := Service.UserService.GetUserInfoById(userId, 0)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	likedIds := make(map[uint]bool)
-	dislikedIds := make(map[uint]bool)
-	if viewerId > 0 && len(comments) > 0 {
-		allIds := make([]uint, len(comments))
-		for i, c := range comments {
-			allIds[i] = c.ID
-		}
-		var likes []entity.Action
-		global.GetDB().Where("target_id IN ? AND user_id = ? AND target_type = ? AND action_type = ?",
-			allIds, viewerId, entity.TargetComment, entity.ActionLike).Find(&likes)
-		for _, l := range likes {
-			likedIds[l.TargetId] = true
-		}
-		var dislikes []entity.Action
-		global.GetDB().Where("target_id IN ? AND user_id = ? AND target_type = ? AND action_type = ?",
-			allIds, viewerId, entity.TargetComment, entity.ActionDislike).Find(&dislikes)
-		for _, d := range dislikes {
-			dislikedIds[d.TargetId] = true
-		}
-	}
-
-	result := make([]response.Comment, len(comments))
-	for i, c := range comments {
-		result[i] = response.Comment{
-			CommentId:       c.ID,
-			UserId:          c.UserId,
-			PostId:          c.PostId,
-			RootCommentId:   c.RootCommentId,
-			ParentCommentId: c.ParentCommentId,
-			Content:         c.Content,
-			CreatedAt:       c.CreatedAt,
-			UpdatedAt:       c.UpdatedAt,
-			Author:          author,
-			Likes:           c.LikeCount,
-			Dislikes:        c.DislikeCount,
-			Replies:         c.ReplyCount,
-			IsLiked:         likedIds[c.ID],
-			IsDisliked:      dislikedIds[c.ID],
-		}
-	}
-	return result, total, nil
 }
 
 func (us *UserService) Follow(followerId, followingId uint) (*response.FollowStatus, error) {
@@ -445,11 +387,11 @@ func (us *UserService) toUserInfo(usr *entity.User, viewerId uint) response.User
 		Banned:               usr.Banned,
 		FollowerCount:        profile.FollowerCount,
 		FollowingCount:       profile.FollowingCount,
-		PostCount:           int64(profile.PostCount),
-		CommentCount:        int64(profile.CommentCount),
-		ReceivedLikeCount:   profile.ReceivedLikeCount,
+		PostCount:            profile.PostCount,
+		CommentCount:         profile.CommentCount,
+		ReceivedLikeCount:    profile.ReceivedLikeCount,
 		ReceivedDislikeCount: profile.ReceivedDislikeCount,
-		IsFollowed:          isFollowed,
+		IsFollowed:           isFollowed,
 	}
 }
 

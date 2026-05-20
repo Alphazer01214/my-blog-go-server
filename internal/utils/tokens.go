@@ -52,16 +52,22 @@ func GenerateRefreshClaims(base request.BaseClaims) request.RefreshClaims {
 	}
 }
 
-func GenerateAccessTokenFromClaims(claims request.AccessClaims) string {
+func GenerateAccessTokenFromClaims(claims request.AccessClaims) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenString, _ := token.SignedString([]byte(global.GetConfig().JWT.AccessTokenSecret))
-	return tokenString
+	tokenString, err := token.SignedString([]byte(global.GetConfig().JWT.AccessTokenSecret))
+	if err != nil {
+		return "", err
+	}
+	return tokenString, nil
 }
 
-func GenerateRefreshTokenFromClaims(claims request.RefreshClaims) string {
+func GenerateRefreshTokenFromClaims(claims request.RefreshClaims) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenString, _ := token.SignedString([]byte(global.GetConfig().JWT.RefreshTokenSecret))
-	return tokenString
+	tokenString, err := token.SignedString([]byte(global.GetConfig().JWT.RefreshTokenSecret))
+	if err != nil {
+		return "", err
+	}
+	return tokenString, nil
 }
 
 func SetRefreshTokenCookie(c *gin.Context, token string, age int) {

@@ -30,13 +30,11 @@ AI 模块支持用户创建自定义 LLM 智能体（Agent），配置模型参�
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `agent_name` | string | 是 | 智能体名称（唯一） |
+| `agent_name` | string | 是 | 智能体名称 |
 | `base_url` | string | 是 | API 基础地址 |
 | `api_key` | string | 是 | API 密钥 |
 | `provider` | string | 是 | 模型提供商，仅支持 `openai` / `ollama` |
 | `model_name` | string | 是 | 模型名称 |
-
-> 新建智能体默认值：`activate=false`, `temperature=0`, `thinking=false`
 
 ### 响应 data
 
@@ -72,11 +70,9 @@ AI 模块支持用户创建自定义 LLM 智能体（Agent），配置模型参�
 | `api_key` | string | 否 | API 密钥 |
 | `provider` | string | 否 | 提供商 |
 | `model_name` | string | 否 | 模型名 |
-| `prompts` | JSONMap | 否 | 提示词配置，如 `{"system":"..."}` |
+| `prompts` | JSONMap | 否 | 提示词配置 |
 | `memories` | JSONMap | 否 | 记忆键值对 |
 | `activate` | bool | 否 | 是否激活 |
-
-> **不可修改字段：** `temperature`、`thinking` 不在 Update 接口中（保留创建时的值）
 
 ### 响应 data
 
@@ -88,21 +84,16 @@ AI 模块支持用户创建自定义 LLM 智能体（Agent），配置模型参�
 
 **GET** `/api/agents` `[认证]`
 
-> 备用路径：`GET /api/agent/list`
-
 ### 响应 data
 
 ```json
 [
   {
-    "id": 1,
+    "agent_id": 1,
     "created_at": "2024-01-01T00:00:00Z",
     "updated_at": "2024-01-01T00:00:00Z",
-    "deleted_at": null,
     "user_id": 1,
     "name": "my-assistant",
-    "base_url": "https://api.openai.com/v1",
-    "api_key": "sk-***",
     "model_name": "gpt-4",
     "provider": "openai",
     "activate": true,
@@ -113,20 +104,6 @@ AI 模块支持用户创建自定义 LLM 智能体（Agent），配置模型参�
   }
 ]
 ```
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `id` | uint | 智能体 ID |
-| `name` | string | 智能体名称 |
-| `provider` | string | 提供商 |
-| `model_name` | string | 模型名称 |
-| `activate` | bool | 是否激活 |
-| `temperature` | float64 | 模型温度参数 |
-| `thinking` | bool | 是否启用思维链 |
-| `prompts` | JSONMap | 提示词配置 |
-| `memories` | JSONMap | 记忆键值对 |
-| `base_url` | string | API 地址 |
-| `api_key` | string | API 密钥 |
 
 ---
 
@@ -141,6 +118,8 @@ AI 模块支持用户创建自定义 LLM 智能体（Agent），配置模型参�
 | `id` | uint | 智能体 ID |
 
 ### 响应 data
+
+> **安全设计**：`api_key` 和 `base_url` 不在响应中返回，防止敏感信息泄露。
 
 同 [获取智能体列表](#3-获取智能体列表) 中的单个元素结构
 
@@ -170,10 +149,10 @@ AI 模块支持用户创建自定义 LLM 智能体（Agent），配置模型参�
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `agent_id` | uint | 是 | 智能体 ID |
-| `ai_options.temperature` | float64 | 否 | 温度参数（暂未生效） |
-| `ai_options.thinking` | bool | 否 | 是否启用思维链（暂未生效） |
-| `ai_options.search_internet` | bool | 否 | 是否联网搜索（**未实现**） |
-| `sys_prompt` | string | 否 | 系统提示词（追加在消息列表中） |
+| `ai_options.temperature` | float64 | 否 | 温度参数 |
+| `ai_options.thinking` | bool | 否 | 是否启用思维链 |
+| `ai_options.search_internet` | bool | 否 | 是否联网搜索（未实现） |
+| `sys_prompt` | string | 否 | 系统提示词 |
 | `usr_prompt` | string | 是 | 用户消息 |
 
 ### 响应 data
@@ -188,15 +167,6 @@ AI 模块支持用户创建自定义 LLM 智能体（Agent），配置模型参�
   "message": "success"
 }
 ```
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `agent_id` | uint | 智能体 ID |
-| `chat_id` | string | 非流式调用时始终为空 |
-| `reasoning_content` | string | 思维链内容（thinking 模式，暂未实现） |
-| `content` | string | AI 回复正文 |
-| `status` | bool | 调用是否成功 |
-| `message` | string | 状态描述：`"success"` 或错误详情 |
 
 ---
 
@@ -218,8 +188,6 @@ AI 模块支持用户创建自定义 LLM 智能体（Agent），配置模型参�
 
 ### SSE 响应格式
 
-流式响应包含 **两类 SSE 事件**：
-
 #### 第一帧：历史记录
 
 ```json
@@ -234,35 +202,22 @@ AI 模块支持用户创建自定义 LLM 智能体（Agent），配置模型参�
 }
 ```
 
-| 字段 | 说明 |
-|------|------|
-| `chat_id` | 会话 UUID |
-| `history` | 该会话的历史消息数组 |
-
 #### 后续帧：增量回复
 
 ```
 data: {"agent_id":1,"content":"你好","status":true,"message":"","reasoning_content":"","chat_id":"uuid-xxx"}
 
-data: {"agent_id":1,"content":"！","status":true,"message":"","reasoning_content":"","chat_id":"uuid-xxx"}
-
-data: {"agent_id":1,"content":"我","status":true,"message":"","reasoning_content":"","chat_id":"uuid-xxx"}
-
 data: {"agent_id":1,"content":"","status":true,"message":"done","reasoning_content":"","chat_id":"uuid-xxx"}
 ```
-
-每条增量消息格式 `StandardAiResponse`：
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `agent_id` | uint | 智能体 ID |
 | `chat_id` | string | 会话 UUID |
-| `content` | string | 本次增量文本 |
+| `content` | string | 增量文本 |
 | `status` | bool | 正常为 `true`，出错为 `false` |
-| `message` | string | `""` 为进行中，`"done"` 为流结束，`"error..."` 为错误 |
-| `reasoning_content` | string | 思维链内容（暂未实现） |
-
-> 流结束时 `message` 为 `"done"`；错误时 `status=false` 且 `message` 包含错误信息
+| `message` | string | `""` 为进行中，`"done"` 为流结束 |
+| `reasoning_content` | string | 思维链内容（未实现） |
 
 ---
 
@@ -308,7 +263,7 @@ data: {"agent_id":1,"content":"","status":true,"message":"done","reasoning_conte
 | `uuid` | string | 会话唯一标识，用于继续对话 |
 | `title` | string | 会话标题（截取首条用户消息前 100 字符） |
 | `agent_id` | uint | 关联的智能体 ID |
-| `messages` | JSON | 历史消息数组 `[{role, content, time}]`，`role` 为 `"user"` / `"model"` |
+| `messages` | JSON | 历史消息数组 `[{role, content, time}]` |
 
 ---
 

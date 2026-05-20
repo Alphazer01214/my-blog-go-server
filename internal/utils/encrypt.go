@@ -1,23 +1,24 @@
 package utils
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
-
-	uuid2 "github.com/google/uuid"
+	"github.com/google/uuid"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func EncryptPassword(password string) string {
-	hash := sha256.Sum256([]byte(password))
-	return hex.EncodeToString(hash[:])
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return ""
+	}
+	return string(hash)
 }
 
 func IsPasswordCorrect(cleartext string, hash string) bool {
-	return hash == EncryptPassword(cleartext)
+	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(cleartext)) == nil
 }
 
 func GenerateUUID() string {
-	u, err := uuid2.NewV7()
+	u, err := uuid.NewV7()
 	if err != nil {
 		return ""
 	}

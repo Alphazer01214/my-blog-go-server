@@ -14,7 +14,10 @@ type PostCreateRequest struct {
 	Tags       datatypes.JSON `json:"tags"`
 	Keywords   datatypes.JSON `json:"keywords"`
 	Content    string         `json:"content"`
-	Public     bool           `json:"public"`
+
+	Public        bool `json:"public"`
+	ForbidComment bool `json:"forbid_comment"`
+	ForbidShare   bool `json:"forbid_share"`
 }
 
 type PostUpdateRequest struct {
@@ -26,7 +29,10 @@ type PostUpdateRequest struct {
 	Tags       datatypes.JSON `json:"tags"`
 	Keywords   datatypes.JSON `json:"keywords"`
 	Content    string         `json:"content"`
-	Public     bool           `json:"public"`
+
+	Public        bool `json:"public"`
+	ForbidComment bool `json:"forbid_comment"`
+	ForbidShare   bool `json:"forbid_share"`
 }
 
 type PostActionRequest struct {

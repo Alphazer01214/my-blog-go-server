@@ -9,6 +9,8 @@ import (
 // SetupUserRouter 设置用户相关路由
 func SetupUserRouter(r *gin.Engine) {
 	userApi := api.Api.UserApi
+	postApi := api.Api.PostApi
+	commentApi := api.Api.CommentApi
 
 	// 公开路由（无需认证）
 	publicAuth := r.Group("/api/auth")
@@ -24,8 +26,8 @@ func SetupUserRouter(r *gin.Engine) {
 	public := r.Group("/api")
 	{
 		public.GET("/user/:id", userApi.QueryUserById)
-		public.GET("/user/:id/posts", userApi.QueryUserPosts)
-		public.GET("/user/:id/comments", userApi.QueryUserComments)
+		public.GET("/user/:id/posts", postApi.ListPostsByUserId)
+		public.GET("/user/:id/comments", commentApi.ListCommentsByUserId)
 		public.GET("/user/:id/followers", userApi.GetFollowers)
 		public.GET("/user/:id/following", userApi.GetFollowing)
 		public.GET("/all_users", userApi.GetAllUsers)

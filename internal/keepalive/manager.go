@@ -15,6 +15,7 @@ type Task struct {
 
 type Manager struct {
 	tasks  []*Task
+	mu     sync.Mutex
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
@@ -29,6 +30,8 @@ func NewManager() *Manager {
 }
 
 func (m *Manager) Register(name string, interval time.Duration, fn func(ctx context.Context) error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.tasks = append(m.tasks, &Task{
 		Name:     name,
 		Interval: interval,
@@ -37,7 +40,10 @@ func (m *Manager) Register(name string, interval time.Duration, fn func(ctx cont
 }
 
 func (m *Manager) Start() {
-	for _, t := range m.tasks {
+	m.mu.Lock()
+	tasks := m.tasks
+	m.mu.Unlock()
+	for _, t := range tasks {
 		m.wg.Add(1)
 		go m.runTask(t)
 	}

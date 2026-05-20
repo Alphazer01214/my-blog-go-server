@@ -27,11 +27,10 @@ type IndexRawResponse struct {
 }
 
 type HistoryPoint struct {
-	Time    time.Time         `json:"time"`
-	Common  []IndexItem       `json:"common"`
-	America []IndexItem       `json:"america"`
-	Europe  []IndexItem       `json:"europe"`
-	Asia    []IndexItem       `json:"asia"`
-	Other   []IndexItem       `json:"other"`
+	Time    time.Time   `json:"time"`
+	Common  []IndexItem `json:"common"`
+	America []IndexItem `json:"america"`
+	Europe  []IndexItem `json:"europe"`
+	Asia    []IndexItem `json:"asia"`
+	Other   []IndexItem `json:"other"`
 }
-

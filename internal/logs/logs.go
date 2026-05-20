@@ -39,7 +39,7 @@ func (l *Logman) Log(m string, t string, msg string, level int) {
 		Message: msg,
 		Level:   level,
 	}
-	//print(log)
+	l.print(log)
 	l.Logs = append(l.Logs, log)
 }
 
@@ -51,7 +51,7 @@ func (l *Logman) Info(msg string) {
 		Message: msg,
 		Level:   0,
 	}
-	//print(log)
+	l.print(log)
 	l.Logs = append(l.Logs, log)
 }
 
@@ -63,7 +63,7 @@ func (l *Logman) Warn(msg string) {
 		Message: msg,
 		Level:   1,
 	}
-	//print(log)
+	l.print(log)
 	l.Logs = append(l.Logs, log)
 }
 
@@ -75,7 +75,7 @@ func (l *Logman) Error(msg error) {
 		Message: fmt.Sprintf("%v", msg),
 		Level:   2,
 	}
-	//print(log)
+	l.print(log)
 	l.Logs = append(l.Logs, log)
 }
 

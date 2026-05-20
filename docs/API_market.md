@@ -1,4 +1,4 @@
-# 市场 API
+# 市场数据 API
 
 - [通用说明](./API_common.md)
 
@@ -28,15 +28,6 @@
       "zxj": "50063.46",
       "zdf": "0.75",
       "state": "close"
-    },
-    {
-      "code": "IXIC",
-      "qtcode": "s_usIXIC",
-      "name": "纳斯达克",
-      "location": "纳斯达克",
-      "zxj": "26635.22",
-      "zdf": "0.88",
-      "state": "close"
     }
   ],
   "america": [ ... ],
@@ -45,17 +36,6 @@
   "other": [ ... ]
 }
 ```
-
-### 字段说明
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `updated_at` | ISO8601 | 数据获取时间 |
-| `common` | IndexItem[] | 全球主要指数 |
-| `america` | IndexItem[] | 美洲指数 |
-| `europe` | IndexItem[] | 欧洲指数 |
-| `asia` | IndexItem[] | 亚洲指数 |
-| `other` | IndexItem[] | 其他地区指数 |
 
 ### IndexItem 字段
 
@@ -91,18 +71,11 @@
   "points": [
     {
       "time": "2024-05-15T12:00:00Z",
-      "common": [
-        { "code": "DJI", "qtcode": "s_usDJI", "name": "道琼斯", "zxj": "50063.46", "zdf": "0.75", "state": "close" }
-      ],
+      "common": [ { "code": "DJI", "qtcode": "s_usDJI", "name": "道琼斯", "zxj": "50063.46", "zdf": "0.75", "state": "close" } ],
       "america": [ ... ],
       "europe": [ ... ],
       "asia": [ ... ],
       "other": [ ... ]
-    },
-    {
-      "time": "2024-05-15T12:00:05Z",
-      "common": [ { "code": "DJI", "zxj": "50065.12", "zdf": "0.77", ... } ],
-      "...": "..."
     }
   ]
 }
@@ -126,9 +99,8 @@ GET /api/market/history?from=1715770000000&to=1715773600000
 
 | 配置项 | 默认值 | 说明 |
 |--------|--------|------|
-| `market.refresh_interval` | 5 秒 | 实时数据缓存时长（`config.yaml`） |
+| `market.refresh_interval` | 5 秒 | 实时数据缓存时长 |
 | `market.api_url` | QQ Finance | 上游数据源 |
 
 - 历史数据保留 **24 小时**（Redis sorted set，自动过期）
 - 上游故障时实时接口返回空数组 + 当前时间戳
-

@@ -6,6 +6,8 @@ type Services struct {
 	CommentService
 	AIService
 	MarketService
+	FileService
+	TomoriService
 }
 
 var Service = new(Services)

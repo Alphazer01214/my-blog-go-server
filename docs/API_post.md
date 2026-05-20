@@ -8,20 +8,20 @@
 
 **POST** `/api/create` `[认证]`
 
-> 备用路径：`POST /api/post/create`
-
 ### 请求体
 
 ```json
 {
   "env": { "ipv4": "", "ipv6": "", "os": "", "device_info": "" },
   "title": "string",
-  "cover": "string (封面图 URL)",
+  "cover": "string",
   "category_id": 1,
   "tags": ["tag1", "tag2"],
   "keywords": ["key1", "key2"],
-  "content": "string (正文)",
-  "public": true
+  "content": "string",
+  "public": true,
+  "forbid_comment": false,
+  "forbid_share": false
 }
 ```
 
@@ -31,10 +31,12 @@
 | `title` | string | 是 | 标题 |
 | `cover` | string | 否 | 封面图 URL |
 | `category_id` | uint | 否 | 分类 ID |
-| `tags` | JSON | 否 | 标签数组，如 `["Go","后端"]` |
-| `keywords` | JSON | 否 | 关键词数组，如 `["tutorial"]` |
+| `tags` | JSON | 否 | 标签数组 |
+| `keywords` | JSON | 否 | 关键词数组 |
 | `content` | string | 是 | 正文内容 |
-| `public` | bool | 否 | 是否公开（默认受用户设置影响） |
+| `public` | bool | 否 | 是否公开（受用户设置影响） |
+| `forbid_comment` | bool | 否 | 禁止评论 |
+| `forbid_share` | bool | 否 | 禁止分享 |
 
 ### 响应 data
 
@@ -51,54 +53,20 @@
 | 参数 | 类型 | 默认值 |
 |------|------|--------|
 | `page` | int | 1 |
-| `page_size` | int | 20 |
+| `page_size` | int | 20（最大 100） |
 
 ### 响应 data
 
 ```json
 {
-  "items": [
-    {
-      "id": 1,
-      "created_at": "2024-01-01T00:00:00Z",
-      "updated_at": "2024-01-01T00:00:00Z",
-      "title": "帖子标题",
-      "cover": "https://example.com/cover.jpg",
-      "user_id": 1,
-      "author": {
-        "user_id": 1,
-        "username": "author",
-        "avatar": "",
-        "..." : "..."
-      },
-      "tags": ["Go", "后端"],
-      "category_id": 1,
-      "category_name": "技术",
-      "keywords": ["tutorial"],
-      "content": "正文内容（私密帖子非作者查看时会替换为提示文字）",
-      "view_count": 100,
-      "comment_count": 5,
-      "like_count": 10,
-      "dislike_count": 1,
-      "favorite_count": 3,
-      "share_count": 2,
-      "public": true,
-      "is_liked": false,
-      "is_disliked": false,
-      "is_favorited": false
-    }
-  ],
+  "items": [PostDetail, ...],
   "page": 1,
   "page_size": 20,
   "total": 50
 }
 ```
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `is_liked` | bool | 当前用户是否已点赞 |
-| `is_disliked` | bool | 当前用户是否已点踩 |
-| `is_favorited` | bool | 当前用户是否已收藏 |
+> 非作者查看私密帖子时 `content` 会被替换为 `"this is private post"`
 
 ---
 
@@ -114,15 +82,44 @@
 
 ### 响应 data
 
-`PostDetail` 结构，同 [查询帖子列表](#2-查询帖子列表) 的 `items[]` 元素
+`PostDetail` 结构：
+
+```json
+{
+  "id": 1,
+  "created_at": "2024-01-01T00:00:00Z",
+  "updated_at": "2024-01-01T00:00:00Z",
+  "title": "帖子标题",
+  "cover": "https://example.com/cover.jpg",
+  "user_id": 1,
+  "author": { "user_id": 1, "username": "author", "..." : "..." },
+  "tags": ["Go", "后端"],
+  "category_id": 1,
+  "category_name": "技术",
+  "keywords": ["tutorial"],
+  "content": "正文内容",
+  "view_count": 100,
+  "comment_count": 5,
+  "like_count": 10,
+  "dislike_count": 1,
+  "favorite_count": 3,
+  "share_count": 2,
+  "public": true,
+  "forbid_comment": false,
+  "forbid_share": false,
+  "is_liked": false,
+  "is_disliked": false,
+  "is_favorited": false
+}
+```
+
+> 非作者查看私密帖子时 `content` 会被替换为 `"this is private post"`
 
 ---
 
 ## 4. 更新帖子
 
 **POST** `/api/update` `[认证]`
-
-> 备用路径：`POST /api/post/update`
 
 > 仅帖子作者可更新
 
@@ -131,14 +128,15 @@
 ```json
 {
   "post_id": 1,
-  "env": { "ipv4": "", "ipv6": "", "os": "", "device_info": "" },
   "title": "string",
   "cover": "string",
   "category_id": 1,
   "tags": ["tag1"],
   "keywords": ["key1"],
   "content": "string",
-  "public": true
+  "public": true,
+  "forbid_comment": false,
+  "forbid_share": false
 }
 ```
 
@@ -152,12 +150,14 @@
 | `keywords` | JSON | 否 | 关键词 |
 | `content` | string | 是 | 正文 |
 | `public` | bool | 否 | 是否公开 |
+| `forbid_comment` | bool | 否 | 禁止评论 |
+| `forbid_share` | bool | 否 | 禁止分享 |
 
 > 所有字段会**整体替换**，不传的字段可能被置空
 
 ### 响应 data
 
-空对象
+更新前的 `PostDetail` 结构
 
 ---
 
@@ -258,7 +258,7 @@
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `post_id` | uint | 是 | 帖子 ID |
-| `share_to` | string | 否 | 分享目标平台（如 wechat/qq/twitter） |
+| `share_to` | string | 否 | 分享目标平台 |
 | `share_message` | string | 否 | 分享附言 |
 
 ### 响应 data

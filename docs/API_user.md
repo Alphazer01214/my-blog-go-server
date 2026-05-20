@@ -13,10 +13,16 @@
 ```json
 {
   "env": { "ipv4": "", "ipv6": "", "os": "", "device_info": "" },
-  "username": "string (必填)",
-  "password": "string (必填)"
+  "username": "string",
+  "password": "string"
 }
 ```
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `env` | EnvInfo | 否 | 客户端环境 |
+| `username` | string | 是 | 用户名 |
+| `password` | string | 是 | 密码 |
 
 ### 响应 data
 
@@ -38,8 +44,8 @@
 ```json
 {
   "env": { "ipv4": "", "ipv6": "", "os": "", "device_info": "" },
-  "username": "string (必填)",
-  "password": "string (必填)"
+  "username": "string",
+  "password": "string"
 }
 ```
 
@@ -85,10 +91,6 @@
 
 **POST** `/api/auth/logout` `[认证]`
 
-### 请求体
-
-无
-
 ### 响应 data
 
 空对象
@@ -103,9 +105,27 @@
 
 ### 响应 data
 
+`UserInfo` 结构，同 [根据 ID 查询用户](#5-根据-id-查询用户)
+
+---
+
+## 5. 根据 ID 查询用户
+
+**GET** `/api/user/:id` `[公开]`
+
+### 路径参数
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `id` | uint | 用户 ID |
+
+### 响应 data
+
 ```json
 {
   "user_id": 1,
+  "created_at": "2024-01-01T00:00:00Z",
+  "updated_at": "2024-01-01T00:00:00Z",
   "username": "example",
   "email": "user@example.com",
   "phone": "13800138000",
@@ -124,22 +144,6 @@
 }
 ```
 
----
-
-## 5. 根据 ID 查询用户
-
-**GET** `/api/user/:id` `[公开]`
-
-### 路径参数
-
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `id` | uint | 用户 ID |
-
-### 响应 data
-
-同 [查询当前用户](#4-查询当前用户) 的 data 结构。
-
 > `is_followed` 在登录状态下会反映当前用户是否关注了该用户
 
 ---
@@ -152,16 +156,8 @@
 
 ```json
 [
-  {
-    "user_id": 1,
-    "username": "user1",
-    "...": "..."
-  },
-  {
-    "user_id": 2,
-    "username": "user2",
-    "...": "..."
-  }
+  { "user_id": 1, "username": "user1", "..." : "..." },
+  { "user_id": 2, "username": "user2", "..." : "..." }
 ]
 ```
 
@@ -203,11 +199,11 @@
 ```json
 {
   "env": { "ipv4": "", "ipv6": "", "os": "", "device_info": "" },
-  "new_username": "string (可选)",
-  "new_email": "string (可选)",
-  "new_phone": "string (可选)",
-  "new_bio": "string (可选)",
-  "new_avatar": "string (可选, URL)"
+  "new_username": "string",
+  "new_email": "string",
+  "new_phone": "string",
+  "new_bio": "string",
+  "new_avatar": "string"
 }
 ```
 
@@ -244,11 +240,7 @@
 {
   "is_following": true,
   "is_mutual": false,
-  "target_user": {
-    "user_id": 2,
-    "username": "target_user",
-    "..." : "..."
-  }
+  "target_user": { "user_id": 2, "username": "target_user", "..." : "..." }
 }
 ```
 
@@ -281,7 +273,7 @@
 
 ```json
 {
-  "items": [ { "user_id": 1, "username": "follower1", "...": "..." } ],
+  "items": [UserInfo, ...],
   "page": 1,
   "page_size": 20,
   "total": 100
@@ -323,30 +315,7 @@
 
 ---
 
-## 13. 查询用户评论
-
-**GET** `/api/user/:id/comments` `[公开]`
-
-### 路径参数
-
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `id` | uint | 用户 ID |
-
-### Query 参数
-
-| 参数 | 类型 | 默认值 |
-|------|------|--------|
-| `page` | int | 1 |
-| `page_size` | int | 20 |
-
-### 响应 data
-
-`CommentList` 结构，同 [查询帖子评论](./API_comment.md#2-查询帖子评论)
-
----
-
-## 14. 获取用户设置
+## 13. 获取用户设置
 
 **GET** `/api/settings` `[认证]`
 
@@ -354,17 +323,23 @@
 
 ```json
 {
-  "post_public": true
+  "post_public": true,
+  "comment_public": true,
+  "follow_list_public": true,
+  "follower_list_public": true
 }
 ```
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `post_public` | bool | 发帖是否默认公开 |
+| `comment_public` | bool | 评论列表是否公开 |
+| `follow_list_public` | bool | 关注列表是否公开 |
+| `follower_list_public` | bool | 粉丝列表是否公开 |
 
 ---
 
-## 15. 修改用户设置
+## 14. 修改用户设置
 
 **POST** `/api/settings` `[认证]`
 
@@ -378,7 +353,9 @@
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `post_public` | bool | 是 | 发帖是否默认公开 |
+| `post_public` | bool | 否 | 发帖是否默认公开（传 nil 表示不修改） |
+
+> 当前仅支持修改 `post_public`，后续将支持 `comment_public`、`follow_list_public`、`follower_list_public`
 
 ### 响应 data
 

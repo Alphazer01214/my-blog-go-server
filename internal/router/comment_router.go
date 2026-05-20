@@ -9,15 +9,15 @@ import (
 func SetupCommentRouter(r *gin.Engine) {
 	commentApi := api.Api.CommentApi
 
-	public := r.Group("/api")
-	{
-		public.GET("/post/:id/comments", commentApi.List)
-		public.GET("/comments/:id/replies", commentApi.ListReplies)
-	}
+	//public := r.Group("/api")
+	//{
+	//	public.GET("/post/:id/comments", commentApi.ListCommentsByPostId)
+	//}
 
 	protected := r.Group("/api")
 	protected.Use(middleware.JWTAuthMiddleware())
 	{
+		protected.GET("/post/:id/comments", commentApi.ListCommentsByPostId)
 		protected.POST("/comment", commentApi.Create)
 		protected.DELETE("/comment/:id", commentApi.Delete)
 		protected.POST("/comment/like", commentApi.Like)
