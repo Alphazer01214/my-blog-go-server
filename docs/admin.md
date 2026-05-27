@@ -1,97 +1,415 @@
-# 管理后台 API
+# Admin API
 
-> 仅 **超级管理员**（`takamatsu_tomori`）角色可访问。
+All endpoints under `/api/tomori/` require the `takamatsu_tomori` admin role.
 
-## 目录
-
-| 端点 | 方法 | 说明 |
-|------|------|------|
-| `/api/admin/users` | GET | 获取所有用户列表 |
-| `/api/admin/user/:id` | PUT | 更新用户角色/状态 |
-| `/api/admin/post/:id` | DELETE | 删除任意帖子 |
-| `/api/admin/posts` | GET | 获取所有帖子列表 |
+| Method | Endpoint                        | Description              |
+| ------ | ------------------------------- | ------------------------ |
+| GET    | /api/tomori/stats               | Get system stats         |
+| GET    | /api/tomori/users               | List all users           |
+| POST   | /api/tomori/user/ban            | Ban/unban user           |
+| POST   | /api/tomori/user/role           | Change user role         |
+| POST   | /api/tomori/user/reset_password | Reset user password      |
+| DELETE | /api/tomori/user/:id            | Delete user              |
+| GET    | /api/tomori/posts               | List all posts           |
+| DELETE | /api/tomori/post/:id            | Delete post              |
+| GET    | /api/tomori/comments            | List all comments        |
+| DELETE | /api/tomori/comment/:id         | Delete comment           |
+| GET    | /api/tomori/files               | List all files           |
+| DELETE | /api/tomori/file/:id            | Delete file              |
+| GET    | /api/tomori/agents              | List all agents          |
+| DELETE | /api/tomori/agent/:id           | Delete agent             |
+| GET    | /api/tomori/chats               | List all chat sessions   |
+| DELETE | /api/tomori/chat/:id            | Delete chat session      |
+| GET    | /api/tomori/blacklist           | List blacklist           |
+| POST   | /api/tomori/blacklist/clear     | Clear blacklist          |
 
 ---
 
-## 端点详情
+## GET /api/tomori/stats
 
-### GET /api/admin/users
+Get system-wide statistics.
 
-获取所有用户列表。支持分页。
-
-**Query 参数**：
-
-| 参数 | 类型 | 必填 | 默认 | 说明 |
-|------|------|------|------|------|
-| `page` | int | 否 | 1 | |
-| `page_size` | int | 否 | 20 | |
-
-**Response**：
+**Response:**
 
 ```json
 {
+  "code": 0,
   "data": {
-    "items": [
-      {
-        "id": 1,
-        "username": "testuser",
-        "email": "test@example.com",
-        "avatar_path": "",
-        "background_path": "",
-        "signature": "签名",
-        "role_type": "normal_user",
-        "status": 1,
-        "gender": 0,
-        "grade": 0,
-        "followers": 0,
-        "followings": 0,
-        "post_count": 0,
-        "comment_count": 0,
-        "like_count": 0,
-        "register_ip": "127.0.0.1",
-        "created_at": "2024-01-01T00:00:00Z",
-        "last_login_at": "2024-01-01T00:00:00Z"
-      }
-    ],
-    "page": 1,
-    "page_size": 20,
-    "total": 42
-  }
+    "user_count": 1500,
+    "post_count": 8500,
+    "comment_count": 32000,
+    "file_count": 2400,
+    "agent_count": 120,
+    "chat_count": 5600
+  },
+  "msg": "success"
 }
 ```
 
-### PUT /api/admin/user/:id
+---
 
-更新指定用户的角色或状态。
+## GET /api/tomori/users
 
-**Request Body**：
+List all users with pagination.
+
+**Query Parameters:**
+- `page` (integer, default: 1) - Page number
+- `page_size` (integer, default: 10) - Items per page
+
+**Response:**
 
 ```json
 {
-  "role_type": "vip",
-  "status": 1
+  "code": 0,
+  "data": [
+    { "...UserInfo..." }
+  ],
+  "msg": "success"
 }
 ```
 
-- `status`：1=正常，0=停用
+---
 
-**Response**：标准成功响应。
+## POST /api/tomori/user/ban
 
-### DELETE /api/admin/post/:id
+Ban or unban a user.
 
-删除指定帖子。超级管理员可以删除任意帖子。
+**Request Body:**
 
-**Response**：标准成功响应。
+```json
+{
+  "user_id": 1,
+  "banned": true
+}
+```
 
-### GET /api/admin/posts
+**Response:**
 
-获取所有帖子列表。支持分页。
+```json
+{
+  "code": 0,
+  "data": {},
+  "msg": "user banned"
+}
+```
 
-**Query 参数**：
+---
 
-| 参数 | 类型 | 必填 | 默认 | 说明 |
-|------|------|------|------|------|
-| `page` | int | 否 | 1 | |
-| `page_size` | int | 否 | 20 | |
+## POST /api/tomori/user/role
 
-**Response**：格式同帖子列表接口。
+Change a user's role.
+
+**Request Body:**
+
+```json
+{
+  "user_id": 1,
+  "role": "takamatsu_tomori"
+}
+```
+
+**Response:**
+
+```json
+{
+  "code": 0,
+  "data": {},
+  "msg": "role updated"
+}
+```
+
+---
+
+## POST /api/tomori/user/reset_password
+
+Reset a user's password.
+
+**Request Body:**
+
+```json
+{
+  "user_id": 1,
+  "new_password": "newpass123"
+}
+```
+
+**Response:**
+
+```json
+{
+  "code": 0,
+  "data": {},
+  "msg": "password reset"
+}
+```
+
+---
+
+## DELETE /api/tomori/user/:id
+
+Delete a user account.
+
+**Path Parameters:**
+- `id` (integer) - User ID
+
+**Response:**
+
+```json
+{
+  "code": 0,
+  "data": {},
+  "msg": "user deleted"
+}
+```
+
+---
+
+## GET /api/tomori/posts
+
+List all posts with pagination.
+
+**Query Parameters:**
+- `page` (integer, default: 1) - Page number
+- `page_size` (integer, default: 10) - Items per page
+
+**Response:**
+
+```json
+{
+  "code": 0,
+  "data": [
+    { "...PostDetail..." }
+  ],
+  "msg": "success"
+}
+```
+
+---
+
+## DELETE /api/tomori/post/:id
+
+Delete a post as admin.
+
+**Path Parameters:**
+- `id` (integer) - Post ID
+
+**Response:**
+
+```json
+{
+  "code": 0,
+  "data": {},
+  "msg": "post deleted"
+}
+```
+
+---
+
+## GET /api/tomori/comments
+
+List all comments with pagination.
+
+**Query Parameters:**
+- `page` (integer, default: 1) - Page number
+- `page_size` (integer, default: 10) - Items per page
+
+**Response:**
+
+```json
+{
+  "code": 0,
+  "data": [
+    { "...Comment..." }
+  ],
+  "msg": "success"
+}
+```
+
+---
+
+## DELETE /api/tomori/comment/:id
+
+Delete a comment as admin.
+
+**Path Parameters:**
+- `id` (integer) - Comment ID
+
+**Response:**
+
+```json
+{
+  "code": 0,
+  "data": {},
+  "msg": "comment deleted"
+}
+```
+
+---
+
+## GET /api/tomori/files
+
+List all files with pagination.
+
+**Query Parameters:**
+- `page` (integer, default: 1) - Page number
+- `page_size` (integer, default: 10) - Items per page
+
+**Response:**
+
+```json
+{
+  "code": 0,
+  "data": [
+    { "...FileDetail..." }
+  ],
+  "msg": "success"
+}
+```
+
+---
+
+## DELETE /api/tomori/file/:id
+
+Delete a file as admin.
+
+**Path Parameters:**
+- `id` (integer) - File ID
+
+**Response:**
+
+```json
+{
+  "code": 0,
+  "data": {},
+  "msg": "file deleted"
+}
+```
+
+---
+
+## GET /api/tomori/agents
+
+List all AI agents in the system.
+
+**Response:**
+
+```json
+{
+  "code": 0,
+  "data": [
+    { "...AgentInfo..." }
+  ],
+  "msg": "success"
+}
+```
+
+---
+
+## DELETE /api/tomori/agent/:id
+
+Delete an AI agent as admin.
+
+**Path Parameters:**
+- `id` (integer) - Agent ID
+
+**Response:**
+
+```json
+{
+  "code": 0,
+  "data": {},
+  "msg": "agent deleted"
+}
+```
+
+---
+
+## GET /api/tomori/chats
+
+List all chat sessions with pagination.
+
+**Query Parameters:**
+- `page` (integer, default: 1) - Page number
+- `page_size` (integer, default: 10) - Items per page
+
+**Response:**
+
+```json
+{
+  "code": 0,
+  "data": [
+    {
+      "id": "chat-uuid",
+      "agent_id": 1,
+      "user_id": 1,
+      "title": "Chat session",
+      "messages": [],
+      "created_at": "2026-01-01T00:00:00Z",
+      "updated_at": "2026-01-01T00:00:00Z"
+    }
+  ],
+  "msg": "success"
+}
+```
+
+---
+
+## DELETE /api/tomori/chat/:id
+
+Delete a chat session as admin.
+
+**Path Parameters:**
+- `id` (integer/string) - Chat session ID
+
+**Response:**
+
+```json
+{
+  "code": 0,
+  "data": {},
+  "msg": "chat deleted"
+}
+```
+
+---
+
+## GET /api/tomori/blacklist
+
+List blacklisted entries with pagination.
+
+**Query Parameters:**
+- `page` (integer, default: 1) - Page number
+- `page_size` (integer, default: 10) - Items per page
+
+**Response:**
+
+```json
+{
+  "code": 0,
+  "data": [
+    {
+      "id": 1,
+      "user_id": 5,
+      "reason": "spam",
+      "created_at": "2026-01-01T00:00:00Z"
+    }
+  ],
+  "msg": "success"
+}
+```
+
+---
+
+## POST /api/tomori/blacklist/clear
+
+Clear all blacklist entries.
+
+**Response:**
+
+```json
+{
+  "code": 0,
+  "data": {},
+  "msg": "blacklist cleared"
+}
+```

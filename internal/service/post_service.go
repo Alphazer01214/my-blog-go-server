@@ -1,132 +1,125 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 
 	"blog.alphazer01214.top/internal/constant"
 	"blog.alphazer01214.top/internal/entity"
-	"blog.alphazer01214.top/internal/global"
+	"blog.alphazer01214.top/internal/repository"
 	"blog.alphazer01214.top/internal/request"
 	"blog.alphazer01214.top/internal/response"
 
 	"gorm.io/gorm"
 )
 
-type PostService struct{}
-
-func (ps *PostService) Create(post *entity.Post) (*response.PostDetail, error) {
-	if err := ps.create(post); err != nil {
-		return nil, err
-	}
-	author, err := Service.UserService.GetUserInfoById(post.UserId, 0)
-	if err != nil {
-		return nil, err
-	}
-	if err := global.GetDB().Model(&entity.UserProfile{}).Where("user_id = ?", post.UserId).Update("post_count", gorm.Expr("post_count + 1")).Error; err != nil {
-		return nil, err
-	}
-	return ps.toPostDetail(post, &author, 0), nil
+type PostService struct {
+	postRepo    repository.PostRepository
+	userRepo    repository.UserRepository
+	actionRepo  repository.ActionRepository
+	userService *UserService
 }
 
-func (ps *PostService) GetPostByPostId(id uint, viewerId uint) (*response.PostDetail, error) {
-	post, err := ps.getPostEntityById(id)
-	ps.visit(id, viewerId)
-	if err != nil {
-		return nil, err
+func NewPostService(
+	postRepo repository.PostRepository,
+	userRepo repository.UserRepository,
+	actionRepo repository.ActionRepository,
+	userService *UserService,
+) *PostService {
+	return &PostService{
+		postRepo:    postRepo,
+		userRepo:    userRepo,
+		actionRepo:  actionRepo,
+		userService: userService,
 	}
-	author, err := Service.UserService.GetUserInfoById(post.UserId, 0)
-	if err != nil {
-		return nil, err
-	}
-	return ps.toPostDetail(post, &author, viewerId), nil
 }
 
-func (ps *PostService) GetAllPosts(page, pageSize int, viewerId uint) (response.PostList, error) {
-	var posts []entity.Post
-	var total int64
-	db := global.GetDB().Model(&entity.Post{})
-	if err := db.Count(&total).Error; err != nil {
-		return response.PostList{}, err
+func (ps *PostService) Create(ctx context.Context, post *entity.Post) (*response.PostDetail, error) {
+	if err := ps.postRepo.Create(ctx, post); err != nil {
+		return nil, err
 	}
-	offset := (page - 1) * pageSize
-	if err := db.Order("created_at desc").Offset(offset).Limit(pageSize).Find(&posts).Error; err != nil {
-		return response.PostList{}, err
+	if err := ps.userRepo.IncrementProfileCounter(ctx, post.UserId, "post_count"); err != nil {
+		return nil, err
 	}
+	author, err := ps.userService.GetUserById(ctx, post.UserId, 0)
+	if err != nil {
+		return nil, err
+	}
+	return ps.toPostDetail(ctx, post, author, 0), nil
+}
 
-	items := make([]response.PostDetail, len(posts))
-	for i, post := range posts {
-		author, err := Service.UserService.GetUserInfoById(post.UserId, 0)
-		if err != nil {
-			return response.PostList{}, err
-		}
-		items[i] = *ps.toPostDetail(&post, &author, viewerId)
+func (ps *PostService) GetPostById(ctx context.Context, id uint, viewerId uint) (*response.PostDetail, error) {
+	post, err := ps.postRepo.FindById(ctx, id)
+	if err != nil {
+		return nil, err
 	}
+	_ = ps.postRepo.IncrementViewCount(ctx, id)
+	author, err := ps.userService.GetUserById(ctx, post.UserId, 0)
+	if err != nil {
+		return nil, err
+	}
+	return ps.toPostDetail(ctx, post, author, viewerId), nil
+}
 
-	return response.PostList{
+func (ps *PostService) ListPosts(ctx context.Context, page, pageSize int, viewerId uint) (*response.PostList, error) {
+	pagination, err := ps.postRepo.ListPosts(ctx, page, pageSize)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]response.PostDetail, len(pagination.Items))
+	for i, post := range pagination.Items {
+		author, _ := ps.userService.GetUserById(ctx, post.UserId, 0)
+		items[i] = *ps.toPostDetail(ctx, &post, author, viewerId)
+	}
+	return &response.PostList{
 		Items:    items,
-		Page:     page,
-		PageSize: pageSize,
-		Total:    total,
+		Page:     pagination.Page,
+		PageSize: pagination.PageSize,
+		Total:    pagination.Total,
 	}, nil
 }
 
-func (ps *PostService) SearchPost(req *request.PostSearchRequest, page, pageSize int, viewerId uint) (response.PostList, error) {
-	var entities []entity.Post
-	var total int64
-	qKeyword := "%" + req.Keyword + "%"
-	//qTag := "%" + req.Tag + "%"
-
-	//db := global.GetDB().Model(&entity.Post{}).Where(
-	//	"(title ILIKE ? OR content ILIKE ?) OR array_to_string(tags, ' ') ILIKE ? OR keywords::text ILIKE ?",
-	//	qKeyword, qKeyword, qTag, qKeyword,
-	//)
-
-	db := global.GetDB().Model(&entity.Post{}).Where("title ILIKE ? OR content ILIKE ?", qKeyword, qKeyword)
-
-	if err := db.Count(&total).Error; err != nil {
-		return response.PostList{}, err
+func (ps *PostService) ListPostsByUserId(ctx context.Context, userId uint, page, pageSize int, viewerId uint) (*response.PostList, error) {
+	pagination, err := ps.postRepo.ListPostsByUserId(ctx, userId, page, pageSize)
+	if err != nil {
+		return nil, err
 	}
-
-	offset := (page - 1) * pageSize
-	if err := db.Order("created_at desc").Offset(offset).Limit(pageSize).Find(&entities).Error; err != nil {
-		return response.PostList{}, err
+	author, _ := ps.userService.GetUserById(ctx, userId, 0)
+	items := make([]response.PostDetail, len(pagination.Items))
+	for i, post := range pagination.Items {
+		items[i] = *ps.toPostDetail(ctx, &post, author, viewerId)
 	}
-
-	items := make([]response.PostDetail, 0, len(entities))
-	for _, et := range entities {
-		userinfo, err := Service.UserService.GetUserInfoById(et.UserId, viewerId)
-		if err != nil {
-			continue
-		}
-		pd := ps.toPostDetail(&et, &userinfo, viewerId)
-		items = append(items, *pd)
-	}
-
-	return response.PostList{
+	return &response.PostList{
 		Items:    items,
-		Page:     page,
-		PageSize: pageSize,
-		Total:    total,
+		Page:     pagination.Page,
+		PageSize: pagination.PageSize,
+		Total:    pagination.Total,
 	}, nil
 }
 
-func (ps *PostService) DeleteById(id uint) error {
-	post, err := ps.getPostEntityById(id)
+func (ps *PostService) SearchPosts(ctx context.Context, keyword string, page, pageSize int, viewerId uint) (*response.PostList, error) {
+	pagination, err := ps.postRepo.SearchByKeyword(ctx, keyword, page, pageSize)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if err := global.GetDB().Delete(&entity.Post{}, id).Error; err != nil {
-		return err
+	items := make([]response.PostDetail, len(pagination.Items))
+	for i, post := range pagination.Items {
+		author, _ := ps.userService.GetUserById(ctx, post.UserId, 0)
+		items[i] = *ps.toPostDetail(ctx, &post, author, viewerId)
 	}
-	return global.GetDB().Model(&entity.UserProfile{}).Where("user_id = ?", post.UserId).Update("post_count", gorm.Expr("GREATEST(post_count - 1, 0)")).Error
+	return &response.PostList{
+		Items:    items,
+		Page:     pagination.Page,
+		PageSize: pagination.PageSize,
+		Total:    pagination.Total,
+	}, nil
 }
 
-func (ps *PostService) Update(id uint, req request.PostUpdateRequest) error {
-	dbPost, err := ps.getPostEntityById(id)
+func (ps *PostService) UpdatePost(ctx context.Context, id uint, req request.PostUpdateRequest) error {
+	dbPost, err := ps.postRepo.FindById(ctx, id)
 	if err != nil {
 		return err
 	}
-
 	dbPost.Title = req.Title
 	dbPost.Cover = req.Cover
 	dbPost.Category = req.Category
@@ -137,183 +130,121 @@ func (ps *PostService) Update(id uint, req request.PostUpdateRequest) error {
 	dbPost.ForbidComment = req.ForbidComment
 	dbPost.ForbidShare = req.ForbidShare
 	dbPost.EnvInfo = req.Env
-
-	return global.GetDB().Save(dbPost).Error
+	return ps.postRepo.Save(ctx, dbPost)
 }
 
-func (ps *PostService) Like(postId, userId uint) error {
-	return global.GetDB().Transaction(func(tx *gorm.DB) error {
-		var existing entity.Action
-		// 如果 like 了就取消
-		result := tx.Where("target_id = ? AND user_id = ? AND target_type = ? AND action_type = ?",
-			postId, userId, constant.TargetPost, constant.ActionLike).First(&existing)
-		if result.RowsAffected > 0 {
-			if err := tx.Delete(&existing).Error; err != nil {
-				return err
-			}
-			return tx.Model(&entity.Post{}).Where("id = ?", postId).
-				Update("like_count", gorm.Expr("GREATEST(like_count - 1, 0)")).Error
+func (ps *PostService) DeletePostById(ctx context.Context, id uint) error {
+	post, err := ps.postRepo.FindById(ctx, id)
+	if err != nil {
+		return err
+	}
+	if err := ps.postRepo.DeleteById(ctx, id); err != nil {
+		return err
+	}
+	return ps.userRepo.DecrementProfileCounter(ctx, post.UserId, "post_count")
+}
+
+// ======================== Actions ========================
+
+func (ps *PostService) ToggleLike(ctx context.Context, postId, userId uint) error {
+	return ps.postRepo.WithTransaction(ctx, func(tx *gorm.DB) error {
+		txAction := ps.actionRepo.WithTx(tx)
+		txPost := ps.postRepo.WithTx(tx)
+
+		exists, _ := txAction.Exists(ctx, userId, postId, constant.ActionLike, constant.TargetPost)
+		if exists {
+			txAction.Delete(ctx, userId, postId, constant.ActionLike, constant.TargetPost)
+			return txPost.DecrementLikeCount(ctx, postId)
 		}
 
-		// 原本是 dislike， 取消 disklike 并 like
-		r := tx.Where("target_id = ? AND user_id = ? AND target_type = ? AND action_type = ?",
-			postId, userId, constant.TargetPost, constant.ActionDislike).Delete(&entity.Action{})
-		if r.RowsAffected > 0 {
-			if err := tx.Model(&entity.Post{}).Where("id = ?", postId).
-				Update("dislike_count", gorm.Expr("GREATEST(dislike_count - 1, 0)")).Error; err != nil {
-				return err
-			}
+		// Remove opposing dislike
+		removed, _ := txAction.Delete(ctx, userId, postId, constant.ActionDislike, constant.TargetPost)
+		if removed > 0 {
+			txPost.DecrementDislikeCount(ctx, postId)
 		}
 
-		if err := tx.Create(&entity.Action{
+		txAction.Create(ctx, &entity.Action{
 			UserId:   userId,
 			TargetId: postId,
 			ActType:  constant.ActionLike,
 			TgtType:  constant.TargetPost,
-		}).Error; err != nil {
-			return err
-		}
-		return tx.Model(&entity.Post{}).Where("id = ?", postId).
-			Update("like_count", gorm.Expr("like_count + 1")).Error
+		})
+		return txPost.IncrementLikeCount(ctx, postId)
 	})
 }
 
-func (ps *PostService) Dislike(postId, userId uint) error {
-	return global.GetDB().Transaction(func(tx *gorm.DB) error {
-		var existing entity.Action
-		result := tx.Where("target_id = ? AND user_id = ? AND target_type = ? AND action_type = ?",
-			postId, userId, constant.TargetPost, constant.ActionDislike).First(&existing)
-		if result.RowsAffected > 0 {
-			if err := tx.Delete(&existing).Error; err != nil {
-				return err
-			}
-			return tx.Model(&entity.Post{}).Where("id = ?", postId).
-				Update("dislike_count", gorm.Expr("GREATEST(dislike_count - 1, 0)")).Error
+func (ps *PostService) ToggleDislike(ctx context.Context, postId, userId uint) error {
+	return ps.postRepo.WithTransaction(ctx, func(tx *gorm.DB) error {
+		txAction := ps.actionRepo.WithTx(tx)
+		txPost := ps.postRepo.WithTx(tx)
+
+		exists, _ := txAction.Exists(ctx, userId, postId, constant.ActionDislike, constant.TargetPost)
+		if exists {
+			txAction.Delete(ctx, userId, postId, constant.ActionDislike, constant.TargetPost)
+			return txPost.DecrementDislikeCount(ctx, postId)
 		}
 
-		r := tx.Where("target_id = ? AND user_id = ? AND target_type = ? AND action_type = ?",
-			postId, userId, constant.TargetPost, constant.ActionLike).Delete(&entity.Action{})
-		if r.RowsAffected > 0 {
-			if err := tx.Model(&entity.Post{}).Where("id = ?", postId).
-				Update("like_count", gorm.Expr("GREATEST(like_count - 1, 0)")).Error; err != nil {
-				return err
-			}
+		removed, _ := txAction.Delete(ctx, userId, postId, constant.ActionLike, constant.TargetPost)
+		if removed > 0 {
+			txPost.DecrementLikeCount(ctx, postId)
 		}
 
-		if err := tx.Create(&entity.Action{
+		txAction.Create(ctx, &entity.Action{
 			UserId:   userId,
 			TargetId: postId,
 			ActType:  constant.ActionDislike,
 			TgtType:  constant.TargetPost,
-		}).Error; err != nil {
-			return err
-		}
-		return tx.Model(&entity.Post{}).Where("id = ?", postId).
-			Update("dislike_count", gorm.Expr("dislike_count + 1")).Error
+		})
+		return txPost.IncrementDislikeCount(ctx, postId)
 	})
 }
 
-func (ps *PostService) Favorite(postId, userId uint) error {
-	return global.GetDB().Transaction(func(tx *gorm.DB) error {
-		var existing entity.Action
-		result := tx.Where("target_id = ? AND user_id = ? AND target_type = ? AND action_type = ?",
-			postId, userId, constant.TargetPost, constant.ActionFavorite).First(&existing)
-		if result.RowsAffected > 0 {
-			if err := tx.Delete(&existing).Error; err != nil {
-				return err
-			}
-			return tx.Model(&entity.Post{}).Where("id = ?", postId).
-				Update("favorite_count", gorm.Expr("GREATEST(favorite_count - 1, 0)")).Error
+func (ps *PostService) ToggleFavorite(ctx context.Context, postId, userId uint) error {
+	return ps.postRepo.WithTransaction(ctx, func(tx *gorm.DB) error {
+		txAction := ps.actionRepo.WithTx(tx)
+		txPost := ps.postRepo.WithTx(tx)
+
+		exists, _ := txAction.Exists(ctx, userId, postId, constant.ActionFavorite, constant.TargetPost)
+		if exists {
+			txAction.Delete(ctx, userId, postId, constant.ActionFavorite, constant.TargetPost)
+			return txPost.DecrementFavoriteCount(ctx, postId)
 		}
 
-		if err := tx.Create(&entity.Action{
+		txAction.Create(ctx, &entity.Action{
 			UserId:   userId,
 			TargetId: postId,
 			ActType:  constant.ActionFavorite,
 			TgtType:  constant.TargetPost,
-		}).Error; err != nil {
-			return err
-		}
-		return tx.Model(&entity.Post{}).Where("id = ?", postId).
-			Update("favorite_count", gorm.Expr("favorite_count + 1")).Error
+		})
+		return txPost.IncrementFavoriteCount(ctx, postId)
 	})
 }
 
-func (ps *PostService) Share(postId, userId uint, shareInfo entity.ShareInfo) error {
+func (ps *PostService) Share(ctx context.Context, postId, userId uint, shareInfo entity.ShareInfo) error {
 	extraJSON, err := json.Marshal(shareInfo)
 	if err != nil {
 		return err
 	}
-	return global.GetDB().Transaction(func(tx *gorm.DB) error {
-		if err := tx.Create(&entity.Action{
+	return ps.postRepo.WithTransaction(ctx, func(tx *gorm.DB) error {
+		txAction := ps.actionRepo.WithTx(tx)
+		txPost := ps.postRepo.WithTx(tx)
+
+		if err := txAction.Create(ctx, &entity.Action{
 			UserId:    userId,
 			TargetId:  postId,
 			ActType:   constant.ActionShare,
 			TgtType:   constant.TargetPost,
 			ExtraInfo: extraJSON,
-		}).Error; err != nil {
+		}); err != nil {
 			return err
 		}
-		return tx.Model(&entity.Post{}).Where("id = ?", postId).
-			Update("share_count", gorm.Expr("share_count + 1")).Error
+		return txPost.IncrementShareCount(ctx, postId)
 	})
 }
 
-func (ps *PostService) GetPostsByUserId(userId uint, page, pageSize int) (response.PostList, error) {
-	var posts []entity.Post
-	var total int64
-	db := global.GetDB().Model(&entity.Post{}).Where("user_id = ?", userId)
-	if err := db.Count(&total).Error; err != nil {
-		return response.PostList{}, err
-	}
-	offset := (page - 1) * pageSize
-	if err := db.Order("created_at desc").Offset(offset).Limit(pageSize).Find(&posts).Error; err != nil {
-		return response.PostList{}, err
-	}
+// ======================== Internal ========================
 
-	author, err := Service.UserService.GetUserInfoById(userId, 0)
-	if err != nil {
-		return response.PostList{}, err
-	}
-	items := make([]response.PostDetail, len(posts))
-	for i, post := range posts {
-		items[i] = *ps.toPostDetail(&post, &author, 0)
-	}
-
-	return response.PostList{
-		Items:    items,
-		Page:     page,
-		PageSize: pageSize,
-		Total:    total,
-	}, nil
-}
-
-func (ps *PostService) create(post *entity.Post) error {
-	return global.GetDB().Create(post).Error
-}
-
-func (ps *PostService) getPostEntityById(id uint) (*entity.Post, error) {
-	var post entity.Post
-	err := global.GetDB().Where("id = ?", id).First(&post).Error
-	return &post, err
-}
-
-func (ps *PostService) GetPostEntityById(id uint) (*entity.Post, error) {
-	return ps.getPostEntityById(id)
-}
-
-func (ps *PostService) visit(postId uint, viewerId uint) {
-	global.GetDB().Model(&entity.Post{}).Where("id = ?", postId).
-		Update("view_count", gorm.Expr("view_count + 1"))
-}
-
-func (ps *PostService) isForbidComment(postId uint, viewerId uint) bool {
-	var res bool
-	err := global.GetDB().Model(&entity.Post{}).Where("ID = ?", postId).Pluck("forbid_comment", &res).Error
-	return err == nil && res
-}
-
-func (ps *PostService) toPostDetail(post *entity.Post, author *response.UserInfo, viewerId uint) *response.PostDetail {
+func (ps *PostService) toPostDetail(ctx context.Context, post *entity.Post, author *response.UserInfo, viewerId uint) *response.PostDetail {
 	pd := &response.PostDetail{
 		ID:            post.ID,
 		CreatedAt:     post.CreatedAt,
@@ -332,7 +263,6 @@ func (ps *PostService) toPostDetail(post *entity.Post, author *response.UserInfo
 		FavoriteCount: post.FavoriteCount,
 		ShareCount:    post.ShareCount,
 		Env:           post.EnvInfo,
-
 		Public:        post.Public,
 		ForbidComment: post.ForbidComment,
 		ForbidShare:   post.ForbidShare,
@@ -342,19 +272,13 @@ func (ps *PostService) toPostDetail(post *entity.Post, author *response.UserInfo
 	}
 
 	if viewerId > 0 {
-		var like entity.Action
-		if global.GetDB().Where("target_id = ? AND user_id = ? AND target_type = ? AND action_type = ?",
-			post.ID, viewerId, constant.TargetPost, constant.ActionLike).First(&like).Error == nil {
+		if exists, _ := ps.actionRepo.Exists(ctx, viewerId, post.ID, constant.ActionLike, constant.TargetPost); exists {
 			pd.IsLiked = true
 		}
-		var dislike entity.Action
-		if global.GetDB().Where("target_id = ? AND user_id = ? AND target_type = ? AND action_type = ?",
-			post.ID, viewerId, constant.TargetPost, constant.ActionDislike).First(&dislike).Error == nil {
+		if exists, _ := ps.actionRepo.Exists(ctx, viewerId, post.ID, constant.ActionDislike, constant.TargetPost); exists {
 			pd.IsDisliked = true
 		}
-		var fav entity.Action
-		if global.GetDB().Where("target_id = ? AND user_id = ? AND target_type = ? AND action_type = ?",
-			post.ID, viewerId, constant.TargetPost, constant.ActionFavorite).First(&fav).Error == nil {
+		if exists, _ := ps.actionRepo.Exists(ctx, viewerId, post.ID, constant.ActionFavorite, constant.TargetPost); exists {
 			pd.IsFavorited = true
 		}
 	}

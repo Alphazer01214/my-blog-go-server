@@ -12,9 +12,9 @@ import (
 )
 
 // TomoriApi 超级管理员（TakamatsuTomori）论坛管理 API
-type TomoriApi struct{}
-
-var tomoriService = &service.Service.TomoriService
+type TomoriApi struct {
+	tomoriService *service.TomoriService
+}
 
 // authorizeTomori 验证当前用户是否为 TakamatsuTomori 超级管理员
 func authorizeTomori(c *gin.Context) (request.AccessClaims, error) {
@@ -36,7 +36,7 @@ func (ta *TomoriApi) GetStats(c *gin.Context) {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
-	stats, err := tomoriService.GetStats()
+	stats, err := ta.tomoriService.GetStats(c.Request.Context())
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
@@ -53,7 +53,7 @@ func (ta *TomoriApi) ListUsers(c *gin.Context) {
 		return
 	}
 	page, pageSize := parsePagination(c)
-	rp, err := tomoriService.ListUsers(page, pageSize)
+	rp, err := ta.tomoriService.ListUsers(c.Request.Context(), page, pageSize)
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
@@ -72,7 +72,7 @@ func (ta *TomoriApi) BanUser(c *gin.Context) {
 		response.ErrorWithMsg(c, "invalid request")
 		return
 	}
-	if err := tomoriService.BanUser(req.UserId, req.Banned); err != nil {
+	if err := ta.tomoriService.BanUser(c.Request.Context(), req.UserId, req.Banned); err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
@@ -90,7 +90,7 @@ func (ta *TomoriApi) SetRole(c *gin.Context) {
 		response.ErrorWithMsg(c, "invalid request")
 		return
 	}
-	if err := tomoriService.SetRole(req.UserId, req.Role); err != nil {
+	if err := ta.tomoriService.SetRole(c.Request.Context(), req.UserId, req.Role); err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
@@ -108,7 +108,7 @@ func (ta *TomoriApi) ResetPassword(c *gin.Context) {
 		response.ErrorWithMsg(c, "invalid request")
 		return
 	}
-	if err := tomoriService.ResetPassword(req.UserId, req.NewPassword); err != nil {
+	if err := ta.tomoriService.ResetPassword(c.Request.Context(), req.UserId, req.NewPassword); err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
@@ -126,7 +126,7 @@ func (ta *TomoriApi) DeleteUser(c *gin.Context) {
 		response.ErrorWithMsg(c, "invalid user id")
 		return
 	}
-	if err := tomoriService.ForceDeleteUser(uint(id)); err != nil {
+	if err := ta.tomoriService.ForceDeleteUser(c.Request.Context(), uint(id)); err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
@@ -142,7 +142,7 @@ func (ta *TomoriApi) ListPosts(c *gin.Context) {
 		return
 	}
 	page, pageSize := parsePagination(c)
-	rp, err := tomoriService.ListAllPosts(page, pageSize)
+	rp, err := ta.tomoriService.ListAllPosts(c.Request.Context(), page, pageSize)
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
@@ -161,7 +161,7 @@ func (ta *TomoriApi) DeletePost(c *gin.Context) {
 		response.ErrorWithMsg(c, "invalid post id")
 		return
 	}
-	if err := tomoriService.ForceDeletePost(uint(id)); err != nil {
+	if err := ta.tomoriService.ForceDeletePost(c.Request.Context(), uint(id)); err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
@@ -177,7 +177,7 @@ func (ta *TomoriApi) ListComments(c *gin.Context) {
 		return
 	}
 	page, pageSize := parsePagination(c)
-	rp, err := tomoriService.ListAllComments(page, pageSize)
+	rp, err := ta.tomoriService.ListAllComments(c.Request.Context(), page, pageSize)
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
@@ -196,7 +196,7 @@ func (ta *TomoriApi) DeleteComment(c *gin.Context) {
 		response.ErrorWithMsg(c, "invalid comment id")
 		return
 	}
-	if err := tomoriService.ForceDeleteComment(uint(id)); err != nil {
+	if err := ta.tomoriService.ForceDeleteComment(c.Request.Context(), uint(id)); err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
@@ -212,7 +212,7 @@ func (ta *TomoriApi) ListFiles(c *gin.Context) {
 		return
 	}
 	page, pageSize := parsePagination(c)
-	rp, err := tomoriService.ListAllFiles(page, pageSize)
+	rp, err := ta.tomoriService.ListAllFiles(c.Request.Context(), page, pageSize)
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
@@ -231,7 +231,7 @@ func (ta *TomoriApi) DeleteFile(c *gin.Context) {
 		response.ErrorWithMsg(c, "invalid file id")
 		return
 	}
-	if err := tomoriService.ForceDeleteFile(uint(id)); err != nil {
+	if err := ta.tomoriService.ForceDeleteFile(c.Request.Context(), uint(id)); err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
@@ -246,7 +246,7 @@ func (ta *TomoriApi) ListAgents(c *gin.Context) {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
-	rp, err := tomoriService.ListAllAgents()
+	rp, err := ta.tomoriService.ListAllAgents(c.Request.Context())
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
@@ -265,7 +265,7 @@ func (ta *TomoriApi) DeleteAgent(c *gin.Context) {
 		response.ErrorWithMsg(c, "invalid agent id")
 		return
 	}
-	if err := tomoriService.ForceDeleteAgent(uint(id)); err != nil {
+	if err := ta.tomoriService.ForceDeleteAgent(c.Request.Context(), uint(id)); err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
@@ -281,17 +281,12 @@ func (ta *TomoriApi) ListChats(c *gin.Context) {
 		return
 	}
 	page, pageSize := parsePagination(c)
-	sessions, total, err := tomoriService.ListAllChats(page, pageSize)
+	rp, err := ta.tomoriService.ListAllChats(c.Request.Context(), page, pageSize)
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
-	response.SuccessWithDetail(c, gin.H{
-		"items":     sessions,
-		"page":      page,
-		"page_size": pageSize,
-		"total":     total,
-	}, "ok")
+	response.SuccessWithDetail(c, rp, "ok")
 }
 
 // DeleteChat DELETE /api/tomori/chat/:chat_id - 删除任意聊天会话
@@ -305,7 +300,7 @@ func (ta *TomoriApi) DeleteChat(c *gin.Context) {
 		response.ErrorWithMsg(c, "missing chat_id")
 		return
 	}
-	if err := tomoriService.ForceDeleteChat(chatId); err != nil {
+	if err := ta.tomoriService.ForceDeleteChat(c.Request.Context(), chatId); err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
@@ -321,7 +316,7 @@ func (ta *TomoriApi) ListBlacklist(c *gin.Context) {
 		return
 	}
 	page, pageSize := parsePagination(c)
-	rp, err := tomoriService.ListBlacklist(page, pageSize)
+	rp, err := ta.tomoriService.ListBlacklist(c.Request.Context(), page, pageSize)
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
@@ -335,7 +330,7 @@ func (ta *TomoriApi) ClearBlacklist(c *gin.Context) {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
-	if err := tomoriService.ClearBlacklist(); err != nil {
+	if err := ta.tomoriService.ClearBlacklist(c.Request.Context()); err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}

@@ -81,7 +81,7 @@ func (ms *MarketService) PollOnce(ctx context.Context) error {
 }
 
 // FetchIndices 从 Redis 缓存读取最新数据
-func (ms *MarketService) FetchIndices() (*response.MarketResponse, error) {
+func (ms *MarketService) GetIndices() (*response.MarketResponse, error) {
 	cached, err := global.GetRedis().Get(context.Background(), marketLatestKey).Result()
 	if err != nil {
 		return &response.MarketResponse{
@@ -98,7 +98,7 @@ func (ms *MarketService) FetchIndices() (*response.MarketResponse, error) {
 	return &rp, nil
 }
 
-func (ms *MarketService) FetchHistory(from, to time.Time) (*response.HistoryResponse, error) {
+func (ms *MarketService) GetHistory(from, to time.Time) (*response.HistoryResponse, error) {
 	opt := &redis.ZRangeBy{
 		Min: strconv.FormatInt(from.UnixMilli(), 10),
 		Max: strconv.FormatInt(to.UnixMilli(), 10),

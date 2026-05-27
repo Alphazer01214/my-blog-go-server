@@ -16,6 +16,7 @@ import (
 	"blog.alphazer01214.top/internal/constant"
 	"blog.alphazer01214.top/internal/entity"
 	"blog.alphazer01214.top/internal/global"
+	"blog.alphazer01214.top/internal/repository"
 	"blog.alphazer01214.top/internal/request"
 	"blog.alphazer01214.top/internal/response"
 
@@ -23,10 +24,28 @@ import (
 )
 
 type VideoService struct {
+	videoRepo   repository.VideoRepository
+	actionRepo  repository.ActionRepository
+	userRepo    repository.UserRepository
+	userService *UserService
 }
 
-func (vs *VideoService) Create(ctx context.Context, userId uint, vReq request.VideoCreateRequest, videoSize int64) (entity.Video, error) {
-	video := entity.Video{
+func NewVideoService(
+	videoRepo repository.VideoRepository,
+	actionRepo repository.ActionRepository,
+	userRepo repository.UserRepository,
+	userService *UserService,
+) *VideoService {
+	return &VideoService{
+		videoRepo:   videoRepo,
+		actionRepo:  actionRepo,
+		userRepo:    userRepo,
+		userService: userService,
+	}
+}
+
+func (vs *VideoService) Create(ctx context.Context, userId uint, vReq request.VideoCreateRequest, videoSize int64) (*entity.Video, error) {
+	video := &entity.Video{
 		UserId:        userId,
 		Title:         vReq.Title,
 		Description:   vReq.Description,
@@ -41,9 +60,236 @@ func (vs *VideoService) Create(ctx context.Context, userId uint, vReq request.Vi
 		ForbidShare:   vReq.ForbidShare,
 		Status:        "published",
 	}
-	err := global.GetDB().Create(&video).Error
-	return video, err
+	if err := vs.videoRepo.Create(ctx, video); err != nil {
+		return nil, err
+	}
+	return video, nil
 }
+
+func (vs *VideoService) GetVideoById(ctx context.Context, id uint, viewerId uint) (*response.VideoDetail, error) {
+	video, err := vs.videoRepo.FindById(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	_ = vs.videoRepo.IncrementViewCount(ctx, id)
+	author, _ := vs.userService.GetUserById(ctx, video.UserId, 0)
+	return vs.toVideoDetail(ctx, video, author, viewerId), nil
+}
+
+func (vs *VideoService) ListVideos(ctx context.Context, page, pageSize int, viewerId uint) (*response.VideoList, error) {
+	publicOnly := viewerId == 0
+	pagination, err := vs.videoRepo.ListVideos(ctx, publicOnly, page, pageSize)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]response.VideoDetail, len(pagination.Items))
+	for i, video := range pagination.Items {
+		author, _ := vs.userService.GetUserById(ctx, video.UserId, 0)
+		items[i] = *vs.toVideoDetail(ctx, &video, author, viewerId)
+	}
+	return &response.VideoList{
+		Items:    items,
+		Page:     pagination.Page,
+		PageSize: pagination.PageSize,
+		Total:    pagination.Total,
+	}, nil
+}
+
+func (vs *VideoService) ListVideosByUserId(ctx context.Context, userId uint, page, pageSize int, viewerId uint) (*response.VideoList, error) {
+	publicOnly := viewerId == 0 || viewerId != userId
+	pagination, err := vs.videoRepo.ListVideosByUserId(ctx, userId, publicOnly, page, pageSize)
+	if err != nil {
+		return nil, err
+	}
+	author, _ := vs.userService.GetUserById(ctx, userId, 0)
+	items := make([]response.VideoDetail, len(pagination.Items))
+	for i, video := range pagination.Items {
+		items[i] = *vs.toVideoDetail(ctx, &video, author, viewerId)
+	}
+	return &response.VideoList{
+		Items:    items,
+		Page:     pagination.Page,
+		PageSize: pagination.PageSize,
+		Total:    pagination.Total,
+	}, nil
+}
+
+func (vs *VideoService) ListVideosByCategory(ctx context.Context, category string, page, pageSize int, viewerId uint) (*response.VideoList, error) {
+	publicOnly := viewerId == 0
+	pagination, err := vs.videoRepo.ListVideosByCategory(ctx, category, publicOnly, page, pageSize)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]response.VideoDetail, len(pagination.Items))
+	for i, video := range pagination.Items {
+		author, _ := vs.userService.GetUserById(ctx, video.UserId, 0)
+		items[i] = *vs.toVideoDetail(ctx, &video, author, viewerId)
+	}
+	return &response.VideoList{
+		Items:    items,
+		Page:     pagination.Page,
+		PageSize: pagination.PageSize,
+		Total:    pagination.Total,
+	}, nil
+}
+
+func (vs *VideoService) SearchVideos(ctx context.Context, keyword string, page, pageSize int, viewerId uint) (*response.VideoList, error) {
+	publicOnly := viewerId == 0
+	pagination, err := vs.videoRepo.SearchByKeyword(ctx, keyword, publicOnly, page, pageSize)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]response.VideoDetail, len(pagination.Items))
+	for i, video := range pagination.Items {
+		author, _ := vs.userService.GetUserById(ctx, video.UserId, 0)
+		items[i] = *vs.toVideoDetail(ctx, &video, author, viewerId)
+	}
+	return &response.VideoList{
+		Items:    items,
+		Page:     pagination.Page,
+		PageSize: pagination.PageSize,
+		Total:    pagination.Total,
+	}, nil
+}
+
+func (vs *VideoService) UpdateVideo(ctx context.Context, id uint, req request.VideoUpdateRequest) error {
+	video, err := vs.videoRepo.FindById(ctx, id)
+	if err != nil {
+		return err
+	}
+	if req.Title != "" {
+		video.Title = req.Title
+	}
+	if req.Description != "" {
+		video.Description = req.Description
+	}
+	if req.VideoCoverUrl != "" {
+		video.VideoCoverUrl = req.VideoCoverUrl
+	}
+	if req.Category != "" {
+		video.Category = req.Category
+	}
+	if req.Tags != nil {
+		video.Tags = req.Tags
+	}
+	video.Public = req.Public
+	video.ForbidComment = req.ForbidComment
+	video.ForbidShare = req.ForbidShare
+	return vs.videoRepo.Save(ctx, video)
+}
+
+func (vs *VideoService) DeleteVideoById(ctx context.Context, id uint) error {
+	video, err := vs.videoRepo.FindById(ctx, id)
+	if err != nil {
+		return err
+	}
+	if video.VideoSrcUrl != "" {
+		os.Remove(video.VideoSrcUrl)
+	}
+	if video.VideoCoverUrl != "" {
+		os.Remove(video.VideoCoverUrl)
+	}
+	return vs.videoRepo.DeleteById(ctx, id)
+}
+
+// ======================== Actions ========================
+
+func (vs *VideoService) ToggleLike(ctx context.Context, videoId, userId uint) error {
+	return vs.videoRepo.WithTransaction(ctx, func(tx *gorm.DB) error {
+		txAction := vs.actionRepo.WithTx(tx)
+		txVideo := vs.videoRepo.WithTx(tx)
+
+		exists, _ := txAction.Exists(ctx, userId, videoId, constant.ActionLike, constant.TargetVideo)
+		if exists {
+			txAction.Delete(ctx, userId, videoId, constant.ActionLike, constant.TargetVideo)
+			return txVideo.DecrementLikeCount(ctx, videoId)
+		}
+
+		removed, _ := txAction.Delete(ctx, userId, videoId, constant.ActionDislike, constant.TargetVideo)
+		if removed > 0 {
+			txVideo.DecrementDislikeCount(ctx, videoId)
+		}
+
+		txAction.Create(ctx, &entity.Action{
+			UserId:   userId,
+			TargetId: videoId,
+			ActType:  constant.ActionLike,
+			TgtType:  constant.TargetVideo,
+		})
+		return txVideo.IncrementLikeCount(ctx, videoId)
+	})
+}
+
+func (vs *VideoService) ToggleDislike(ctx context.Context, videoId, userId uint) error {
+	return vs.videoRepo.WithTransaction(ctx, func(tx *gorm.DB) error {
+		txAction := vs.actionRepo.WithTx(tx)
+		txVideo := vs.videoRepo.WithTx(tx)
+
+		exists, _ := txAction.Exists(ctx, userId, videoId, constant.ActionDislike, constant.TargetVideo)
+		if exists {
+			txAction.Delete(ctx, userId, videoId, constant.ActionDislike, constant.TargetVideo)
+			return txVideo.DecrementDislikeCount(ctx, videoId)
+		}
+
+		removed, _ := txAction.Delete(ctx, userId, videoId, constant.ActionLike, constant.TargetVideo)
+		if removed > 0 {
+			txVideo.DecrementLikeCount(ctx, videoId)
+		}
+
+		txAction.Create(ctx, &entity.Action{
+			UserId:   userId,
+			TargetId: videoId,
+			ActType:  constant.ActionDislike,
+			TgtType:  constant.TargetVideo,
+		})
+		return txVideo.IncrementDislikeCount(ctx, videoId)
+	})
+}
+
+func (vs *VideoService) ToggleFavorite(ctx context.Context, videoId, userId uint) error {
+	return vs.videoRepo.WithTransaction(ctx, func(tx *gorm.DB) error {
+		txAction := vs.actionRepo.WithTx(tx)
+		txVideo := vs.videoRepo.WithTx(tx)
+
+		exists, _ := txAction.Exists(ctx, userId, videoId, constant.ActionFavorite, constant.TargetVideo)
+		if exists {
+			txAction.Delete(ctx, userId, videoId, constant.ActionFavorite, constant.TargetVideo)
+			return txVideo.DecrementFavoriteCount(ctx, videoId)
+		}
+
+		txAction.Create(ctx, &entity.Action{
+			UserId:   userId,
+			TargetId: videoId,
+			ActType:  constant.ActionFavorite,
+			TgtType:  constant.TargetVideo,
+		})
+		return txVideo.IncrementFavoriteCount(ctx, videoId)
+	})
+}
+
+func (vs *VideoService) Share(ctx context.Context, videoId, userId uint, shareInfo entity.ShareInfo) error {
+	extraJSON, err := json.Marshal(shareInfo)
+	if err != nil {
+		return err
+	}
+	return vs.videoRepo.WithTransaction(ctx, func(tx *gorm.DB) error {
+		txAction := vs.actionRepo.WithTx(tx)
+		txVideo := vs.videoRepo.WithTx(tx)
+
+		if err := txAction.Create(ctx, &entity.Action{
+			UserId:    userId,
+			TargetId:  videoId,
+			ActType:   constant.ActionShare,
+			TgtType:   constant.TargetVideo,
+			ExtraInfo: extraJSON,
+		}); err != nil {
+			return err
+		}
+		return txVideo.IncrementShareCount(ctx, videoId)
+	})
+}
+
+// ======================== Upload (Redis-based) ========================
 
 func (vs *VideoService) InitUpload(ctx context.Context, userId uint, req request.VideoInitUpload, vreq request.VideoCreateRequest) (entity.VideoUploadSession, error) {
 	session := entity.VideoUploadSession{
@@ -57,14 +303,12 @@ func (vs *VideoService) InitUpload(ctx context.Context, userId uint, req request
 		Status:         constant.UploadPending,
 		UploadedChunks: make([]bool, (req.VideoSize+req.ChunkSize-1)/req.ChunkSize),
 	}
-	err := vs.setSessionRedis(ctx, req.UploadId, session)
-	if err != nil {
+	if err := vs.setSessionRedis(ctx, req.UploadId, session); err != nil {
 		return entity.VideoUploadSession{}, err
 	}
 	if err := vs.setCreateVideoRedis(ctx, req.UploadId, vreq); err != nil {
 		return entity.VideoUploadSession{}, err
 	}
-
 	return session, nil
 }
 
@@ -150,11 +394,7 @@ func (vs *VideoService) Merge(ctx context.Context, uploadId string) error {
 		fmt.Printf("[video] extract cover failed for video %d: %v\n", video.ID, err)
 	}
 
-	if err := global.GetDB().Model(&entity.Video{}).Where("id = ?", video.ID).Updates(map[string]interface{}{
-		"video_src_url":   streamUrl,
-		"video_cover_url": coverUrl,
-		"duration":        duration,
-	}).Error; err != nil {
+	if err := vs.videoRepo.UpdateUrls(ctx, video.ID, streamUrl, coverUrl, duration); err != nil {
 		vs.finishSessionRedis(ctx, uploadId, status)
 		return err
 	}
@@ -164,395 +404,33 @@ func (vs *VideoService) Merge(ctx context.Context, uploadId string) error {
 	return nil
 }
 
-func (vs *VideoService) extractCover(videoPath string, coverPath string) (int, error) {
-	if _, err := exec.LookPath("ffmpeg"); err != nil {
-		return 0, fmt.Errorf("ffmpeg not found")
-	}
-
-	duration, err := vs.getVideoDuration(videoPath)
-	if err != nil {
-		return 0, err
-	}
-	if duration <= 0 {
-		return 0, fmt.Errorf("invalid video duration")
-	}
-
-	seekTime := 1.0
-	if duration > 3 {
-		rng := rand.New(rand.NewSource(time.Now().UnixNano()))
-		minSec := float64(duration) * 0.1
-		maxSec := float64(duration) * 0.9
-		seekTime = minSec + rng.Float64()*(maxSec-minSec)
-	}
-
-	cmd := exec.Command("ffmpeg",
-		"-ss", fmt.Sprintf("%.2f", seekTime),
-		"-i", videoPath,
-		"-vframes", "1",
-		"-q:v", "2",
-		"-y",
-		coverPath,
-	)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return 0, fmt.Errorf("ffmpeg failed: %v, output: %s", err, string(output))
-	}
-
-	return duration, nil
-}
-
-func (vs *VideoService) getVideoDuration(videoPath string) (int, error) {
-	if _, err := exec.LookPath("ffprobe"); err != nil {
-		return 0, fmt.Errorf("ffprobe not found")
-	}
-
-	cmd := exec.Command("ffprobe",
-		"-v", "error",
-		"-show_entries", "format=duration",
-		"-of", "default=noprint_wrappers=1:nokey=1",
-		videoPath,
-	)
-	output, err := cmd.Output()
-	if err != nil {
-		return 0, fmt.Errorf("ffprobe failed: %v", err)
-	}
-
-	durationStr := strings.TrimSpace(string(output))
-	durationFloat, err := strconv.ParseFloat(durationStr, 64)
-	if err != nil {
-		return 0, fmt.Errorf("parse duration failed: %v", err)
-	}
-
-	return int(durationFloat), nil
-}
-
-func (vs *VideoService) GetVideoById(id uint, viewerId uint) (*response.VideoDetail, error) {
-	video, err := vs.getVideoEntityById(id)
-	if err != nil {
-		return nil, err
-	}
-	vs.visit(id)
-	author, err := Service.UserService.GetUserInfoById(video.UserId, 0)
-	if err != nil {
-		return nil, err
-	}
-	return vs.toVideoDetail(video, &author, viewerId), nil
-}
-
-func (vs *VideoService) GetAllVideos(page, pageSize int, viewerId uint) (response.VideoList, error) {
-	var videos []entity.Video
-	var total int64
-	db := global.GetDB().Model(&entity.Video{})
-	if viewerId == 0 {
-		db = db.Where("public = ?", true)
-	}
-	if err := db.Count(&total).Error; err != nil {
-		return response.VideoList{}, err
-	}
-	offset := (page - 1) * pageSize
-	if err := db.Order("created_at desc").Offset(offset).Limit(pageSize).Find(&videos).Error; err != nil {
-		return response.VideoList{}, err
-	}
-
-	items := make([]response.VideoDetail, len(videos))
-	for i, video := range videos {
-		author, err := Service.UserService.GetUserInfoById(video.UserId, 0)
+func (vs *VideoService) GetAllVideoUploadSessions(ctx context.Context, maxQuery int64) response.VideoUploadSessions {
+	var cursor uint64
+	var sessions []entity.VideoUploadSession
+	for {
+		keys, nextCursor, err := global.GetRedis().Scan(ctx, cursor, "upload_id:*", maxQuery).Result()
 		if err != nil {
-			author = response.UserInfo{}
+			return response.VideoUploadSessions{}
 		}
-		items[i] = *vs.toVideoDetail(&video, &author, viewerId)
-	}
-
-	return response.VideoList{
-		Items:    items,
-		Page:     page,
-		PageSize: pageSize,
-		Total:    total,
-	}, nil
-}
-
-func (vs *VideoService) GetVideosByUserId(userId uint, page, pageSize int, viewerId uint) (response.VideoList, error) {
-	var videos []entity.Video
-	var total int64
-	db := global.GetDB().Model(&entity.Video{}).Where("user_id = ?", userId)
-	if viewerId == 0 || viewerId != userId {
-		db = db.Where("public = ?", true)
-	}
-	if err := db.Count(&total).Error; err != nil {
-		return response.VideoList{}, err
-	}
-	offset := (page - 1) * pageSize
-	if err := db.Order("created_at desc").Offset(offset).Limit(pageSize).Find(&videos).Error; err != nil {
-		return response.VideoList{}, err
-	}
-
-	author, err := Service.UserService.GetUserInfoById(userId, 0)
-	if err != nil {
-		author = response.UserInfo{}
-	}
-	items := make([]response.VideoDetail, len(videos))
-	for i, video := range videos {
-		items[i] = *vs.toVideoDetail(&video, &author, viewerId)
-	}
-
-	return response.VideoList{
-		Items:    items,
-		Page:     page,
-		PageSize: pageSize,
-		Total:    total,
-	}, nil
-}
-
-func (vs *VideoService) GetVideosByCategory(category string, page, pageSize int, viewerId uint) (response.VideoList, error) {
-	var videos []entity.Video
-	var total int64
-	db := global.GetDB().Model(&entity.Video{}).Where("category = ?", category)
-	if viewerId == 0 {
-		db = db.Where("public = ?", true)
-	}
-	if err := db.Count(&total).Error; err != nil {
-		return response.VideoList{}, err
-	}
-	offset := (page - 1) * pageSize
-	if err := db.Order("created_at desc").Offset(offset).Limit(pageSize).Find(&videos).Error; err != nil {
-		return response.VideoList{}, err
-	}
-
-	items := make([]response.VideoDetail, len(videos))
-	for i, video := range videos {
-		author, err := Service.UserService.GetUserInfoById(video.UserId, 0)
-		if err != nil {
-			author = response.UserInfo{}
-		}
-		items[i] = *vs.toVideoDetail(&video, &author, viewerId)
-	}
-
-	return response.VideoList{
-		Items:    items,
-		Page:     page,
-		PageSize: pageSize,
-		Total:    total,
-	}, nil
-}
-
-func (vs *VideoService) SearchVideo(req *request.VideoSearchRequest, page, pageSize int, viewerId uint) (response.VideoList, error) {
-	var videos []entity.Video
-	var total int64
-	qKeyword := "%" + req.Keyword + "%"
-
-	db := global.GetDB().Model(&entity.Video{}).Where("title ILIKE ? OR description ILIKE ?", qKeyword, qKeyword)
-	if viewerId == 0 {
-		db = db.Where("public = ?", true)
-	}
-	if err := db.Count(&total).Error; err != nil {
-		return response.VideoList{}, err
-	}
-
-	offset := (page - 1) * pageSize
-	if err := db.Order("created_at desc").Offset(offset).Limit(pageSize).Find(&videos).Error; err != nil {
-		return response.VideoList{}, err
-	}
-
-	items := make([]response.VideoDetail, 0, len(videos))
-	for _, video := range videos {
-		author, err := Service.UserService.GetUserInfoById(video.UserId, viewerId)
-		if err != nil {
-			continue
-		}
-		vd := vs.toVideoDetail(&video, &author, viewerId)
-		items = append(items, *vd)
-	}
-
-	return response.VideoList{
-		Items:    items,
-		Page:     page,
-		PageSize: pageSize,
-		Total:    total,
-	}, nil
-}
-
-func (vs *VideoService) Update(id uint, req request.VideoUpdateRequest) error {
-	video, err := vs.getVideoEntityById(id)
-	if err != nil {
-		return err
-	}
-
-	if req.Title != "" {
-		video.Title = req.Title
-	}
-	if req.Description != "" {
-		video.Description = req.Description
-	}
-	if req.VideoCoverUrl != "" {
-		video.VideoCoverUrl = req.VideoCoverUrl
-	}
-	if req.Category != "" {
-		video.Category = req.Category
-	}
-	if req.Tags != nil {
-		video.Tags = req.Tags
-	}
-	video.Public = req.Public
-	video.ForbidComment = req.ForbidComment
-	video.ForbidShare = req.ForbidShare
-
-	return global.GetDB().Save(video).Error
-}
-
-func (vs *VideoService) DeleteById(id uint) error {
-	video, err := vs.getVideoEntityById(id)
-	if err != nil {
-		return err
-	}
-
-	if video.VideoSrcUrl != "" {
-		os.Remove(video.VideoSrcUrl)
-	}
-	if video.VideoCoverUrl != "" {
-		os.Remove(video.VideoCoverUrl)
-	}
-
-	return global.GetDB().Delete(&entity.Video{}, id).Error
-}
-
-func (vs *VideoService) Like(videoId, userId uint) error {
-	return global.GetDB().Transaction(func(tx *gorm.DB) error {
-		var existing entity.Action
-		result := tx.Where("target_id = ? AND user_id = ? AND target_type = ? AND action_type = ?",
-			videoId, userId, constant.TargetVideo, constant.ActionLike).First(&existing)
-		if result.RowsAffected > 0 {
-			if err := tx.Delete(&existing).Error; err != nil {
-				return err
+		for _, key := range keys {
+			data := global.GetRedis().Get(ctx, key).Val()
+			var session entity.VideoUploadSession
+			err := json.Unmarshal([]byte(data), &session)
+			if err != nil {
+				continue
 			}
-			return tx.Model(&entity.Video{}).Where("id = ?", videoId).
-				Update("like_count", gorm.Expr("GREATEST(like_count - 1, 0)")).Error
+			sessions = append(sessions, session)
 		}
-
-		r := tx.Where("target_id = ? AND user_id = ? AND target_type = ? AND action_type = ?",
-			videoId, userId, constant.TargetVideo, constant.ActionDislike).Delete(&entity.Action{})
-		if r.RowsAffected > 0 {
-			if err := tx.Model(&entity.Video{}).Where("id = ?", videoId).
-				Update("dislike_count", gorm.Expr("GREATEST(dislike_count - 1, 0)")).Error; err != nil {
-				return err
-			}
+		cursor = nextCursor
+		if cursor == 0 {
+			return response.VideoUploadSessions{Sessions: sessions}
 		}
-
-		if err := tx.Create(&entity.Action{
-			UserId:   userId,
-			TargetId: videoId,
-			ActType:  constant.ActionLike,
-			TgtType:  constant.TargetVideo,
-		}).Error; err != nil {
-			return err
-		}
-		return tx.Model(&entity.Video{}).Where("id = ?", videoId).
-			Update("like_count", gorm.Expr("like_count + 1")).Error
-	})
-}
-
-func (vs *VideoService) Dislike(videoId, userId uint) error {
-	return global.GetDB().Transaction(func(tx *gorm.DB) error {
-		var existing entity.Action
-		result := tx.Where("target_id = ? AND user_id = ? AND target_type = ? AND action_type = ?",
-			videoId, userId, constant.TargetVideo, constant.ActionDislike).First(&existing)
-		if result.RowsAffected > 0 {
-			if err := tx.Delete(&existing).Error; err != nil {
-				return err
-			}
-			return tx.Model(&entity.Video{}).Where("id = ?", videoId).
-				Update("dislike_count", gorm.Expr("GREATEST(dislike_count - 1, 0)")).Error
-		}
-
-		r := tx.Where("target_id = ? AND user_id = ? AND target_type = ? AND action_type = ?",
-			videoId, userId, constant.TargetVideo, constant.ActionLike).Delete(&entity.Action{})
-		if r.RowsAffected > 0 {
-			if err := tx.Model(&entity.Video{}).Where("id = ?", videoId).
-				Update("like_count", gorm.Expr("GREATEST(like_count - 1, 0)")).Error; err != nil {
-				return err
-			}
-		}
-
-		if err := tx.Create(&entity.Action{
-			UserId:   userId,
-			TargetId: videoId,
-			ActType:  constant.ActionDislike,
-			TgtType:  constant.TargetVideo,
-		}).Error; err != nil {
-			return err
-		}
-		return tx.Model(&entity.Video{}).Where("id = ?", videoId).
-			Update("dislike_count", gorm.Expr("dislike_count + 1")).Error
-	})
-}
-
-func (vs *VideoService) Favorite(videoId, userId uint) error {
-	return global.GetDB().Transaction(func(tx *gorm.DB) error {
-		var existing entity.Action
-		result := tx.Where("target_id = ? AND user_id = ? AND target_type = ? AND action_type = ?",
-			videoId, userId, constant.TargetVideo, constant.ActionFavorite).First(&existing)
-		if result.RowsAffected > 0 {
-			if err := tx.Delete(&existing).Error; err != nil {
-				return err
-			}
-			return tx.Model(&entity.Video{}).Where("id = ?", videoId).
-				Update("favorite_count", gorm.Expr("GREATEST(favorite_count - 1, 0)")).Error
-		}
-
-		if err := tx.Create(&entity.Action{
-			UserId:   userId,
-			TargetId: videoId,
-			ActType:  constant.ActionFavorite,
-			TgtType:  constant.TargetVideo,
-		}).Error; err != nil {
-			return err
-		}
-		return tx.Model(&entity.Video{}).Where("id = ?", videoId).
-			Update("favorite_count", gorm.Expr("favorite_count + 1")).Error
-	})
-}
-
-func (vs *VideoService) Share(videoId, userId uint, shareInfo entity.ShareInfo) error {
-	extraJSON, err := json.Marshal(shareInfo)
-	if err != nil {
-		return err
 	}
-	return global.GetDB().Transaction(func(tx *gorm.DB) error {
-		if err := tx.Create(&entity.Action{
-			UserId:    userId,
-			TargetId:  videoId,
-			ActType:   constant.ActionShare,
-			TgtType:   constant.TargetVideo,
-			ExtraInfo: extraJSON,
-		}).Error; err != nil {
-			return err
-		}
-		return tx.Model(&entity.Video{}).Where("id = ?", videoId).
-			Update("share_count", gorm.Expr("share_count + 1")).Error
-	})
 }
 
-func (vs *VideoService) GetVideoEntityById(id uint) (*entity.Video, error) {
-	return vs.getVideoEntityById(id)
-}
+// ======================== Internal ========================
 
-func (vs *VideoService) getVideoEntityById(id uint) (*entity.Video, error) {
-	var video entity.Video
-	err := global.GetDB().Where("id = ?", id).First(&video).Error
-	return &video, err
-}
-
-func (vs *VideoService) visit(videoId uint) {
-	global.GetDB().Model(&entity.Video{}).Where("id = ?", videoId).
-		Update("view_count", gorm.Expr("view_count + 1"))
-}
-
-func (vs *VideoService) IsVideoForbidComment(videoId uint) bool {
-	var res bool
-	err := global.GetDB().Model(&entity.Video{}).Where("ID = ?", videoId).Pluck("forbid_comment", &res).Error
-	return err == nil && res
-}
-
-func (vs *VideoService) toVideoDetail(video *entity.Video, author *response.UserInfo, viewerId uint) *response.VideoDetail {
+func (vs *VideoService) toVideoDetail(ctx context.Context, video *entity.Video, author *response.UserInfo, viewerId uint) *response.VideoDetail {
 	vd := &response.VideoDetail{
 		ID:            video.ID,
 		CreatedAt:     video.CreatedAt,
@@ -581,52 +459,73 @@ func (vs *VideoService) toVideoDetail(video *entity.Video, author *response.User
 	if author != nil {
 		vd.Author = *author
 	}
-
 	if viewerId > 0 {
-		var like entity.Action
-		if global.GetDB().Where("target_id = ? AND user_id = ? AND target_type = ? AND action_type = ?",
-			video.ID, viewerId, constant.TargetVideo, constant.ActionLike).First(&like).Error == nil {
+		if exists, _ := vs.actionRepo.Exists(ctx, viewerId, video.ID, constant.ActionLike, constant.TargetVideo); exists {
 			vd.IsLiked = true
 		}
-		var dislike entity.Action
-		if global.GetDB().Where("target_id = ? AND user_id = ? AND target_type = ? AND action_type = ?",
-			video.ID, viewerId, constant.TargetVideo, constant.ActionDislike).First(&dislike).Error == nil {
+		if exists, _ := vs.actionRepo.Exists(ctx, viewerId, video.ID, constant.ActionDislike, constant.TargetVideo); exists {
 			vd.IsDisliked = true
 		}
-		var fav entity.Action
-		if global.GetDB().Where("target_id = ? AND user_id = ? AND target_type = ? AND action_type = ?",
-			video.ID, viewerId, constant.TargetVideo, constant.ActionFavorite).First(&fav).Error == nil {
+		if exists, _ := vs.actionRepo.Exists(ctx, viewerId, video.ID, constant.ActionFavorite, constant.TargetVideo); exists {
 			vd.IsFavorited = true
 		}
 	}
-
 	return vd
 }
 
-func (vs *VideoService) GetAllVideoUploadSessions(ctx context.Context, maxQuery int64) response.VideoUploadSessions {
-	var cursor uint64
-	var sessions []entity.VideoUploadSession
-	for {
-		keys, nextCursor, err := global.GetRedis().Scan(ctx, cursor, "upload_id:*", maxQuery).Result()
-		if err != nil {
-			return response.VideoUploadSessions{}
-		}
-		for _, key := range keys {
-			data := global.GetRedis().Get(ctx, key).Val()
-			var session entity.VideoUploadSession
-			err := json.Unmarshal([]byte(data), &session)
-			if err != nil {
-				continue
-			}
-			sessions = append(sessions, session)
-		}
-		cursor = nextCursor
-		if cursor == 0 {
-			return response.VideoUploadSessions{
-				Sessions: sessions,
-			}
-		}
+func (vs *VideoService) extractCover(videoPath string, coverPath string) (int, error) {
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		return 0, fmt.Errorf("ffmpeg not found")
 	}
+	duration, err := vs.getVideoDuration(videoPath)
+	if err != nil {
+		return 0, err
+	}
+	if duration <= 0 {
+		return 0, fmt.Errorf("invalid video duration")
+	}
+	seekTime := 1.0
+	if duration > 3 {
+		rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+		minSec := float64(duration) * 0.1
+		maxSec := float64(duration) * 0.9
+		seekTime = minSec + rng.Float64()*(maxSec-minSec)
+	}
+	cmd := exec.Command("ffmpeg",
+		"-ss", fmt.Sprintf("%.2f", seekTime),
+		"-i", videoPath,
+		"-vframes", "1",
+		"-q:v", "2",
+		"-y",
+		coverPath,
+	)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return 0, fmt.Errorf("ffmpeg failed: %v, output: %s", err, string(output))
+	}
+	return duration, nil
+}
+
+func (vs *VideoService) getVideoDuration(videoPath string) (int, error) {
+	if _, err := exec.LookPath("ffprobe"); err != nil {
+		return 0, fmt.Errorf("ffprobe not found")
+	}
+	cmd := exec.Command("ffprobe",
+		"-v", "error",
+		"-show_entries", "format=duration",
+		"-of", "default=noprint_wrappers=1:nokey=1",
+		videoPath,
+	)
+	output, err := cmd.Output()
+	if err != nil {
+		return 0, fmt.Errorf("ffprobe failed: %v", err)
+	}
+	durationStr := strings.TrimSpace(string(output))
+	durationFloat, err := strconv.ParseFloat(durationStr, 64)
+	if err != nil {
+		return 0, fmt.Errorf("parse duration failed: %v", err)
+	}
+	return int(durationFloat), nil
 }
 
 func (vs *VideoService) getUploadChunkDir(uploadId string) (string, error) {

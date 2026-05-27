@@ -1,10 +1,12 @@
 package service
 
 import (
+	"context"
 	"errors"
 
 	"blog.alphazer01214.top/internal/entity"
 	"blog.alphazer01214.top/internal/global"
+	"blog.alphazer01214.top/internal/repository"
 	"blog.alphazer01214.top/internal/request"
 	"blog.alphazer01214.top/internal/response"
 	"blog.alphazer01214.top/internal/utils"
@@ -12,32 +14,40 @@ import (
 	"gorm.io/gorm"
 )
 
-type UserService struct{}
+type UserService struct {
+	repo repository.UserRepository
+}
 
-func (us *UserService) Register(user *entity.User, env *entity.EnvInfo) (*response.Register, error) {
-	if us.isUsernameExist(user.Username) {
+func NewUserService(repo repository.UserRepository) *UserService {
+	return &UserService{repo: repo}
+}
+
+// ======================== Auth ========================
+
+func (us *UserService) Register(ctx context.Context, user *entity.User, env *entity.EnvInfo) (*response.Register, error) {
+	exists, err := us.repo.ExistsByUsername(ctx, user.Username)
+	if err != nil {
+		return nil, err
+	}
+	if exists {
 		return nil, errors.New("username already exist")
 	}
 	user.Password = utils.EncryptPassword(user.Password)
 
-	err := global.GetDB().Transaction(func(tx *gorm.DB) error {
-		if err := tx.Create(user).Error; err != nil {
+	err = us.repo.WithTransaction(ctx, func(tx *gorm.DB) error {
+		txRepo := us.repo.WithTx(tx)
+		if err := txRepo.Create(ctx, user); err != nil {
 			return err
 		}
-		profile := &entity.UserProfile{
+		if err := txRepo.CreateProfile(ctx, &entity.UserProfile{
 			UserId:   user.ID,
 			Username: user.Username,
-		}
-		if err := tx.Create(profile).Error; err != nil {
+		}); err != nil {
 			return err
 		}
-		setting := &entity.UserSetting{
+		return txRepo.CreateSetting(ctx, &entity.UserSetting{
 			UserId: user.ID,
-		}
-		if err := tx.Create(setting).Error; err != nil {
-			return err
-		}
-		return nil
+		})
 	})
 	if err != nil {
 		return nil, err
@@ -48,24 +58,25 @@ func (us *UserService) Register(user *entity.User, env *entity.EnvInfo) (*respon
 	}, nil
 }
 
-func (us *UserService) Login(user *entity.User, env *entity.EnvInfo) (*response.Login, error) {
-	dbu, err := us.getUserInstanceByUsername(user.Username)
+func (us *UserService) Login(ctx context.Context, user *entity.User, env *entity.EnvInfo) (*response.Login, error) {
+	dbUser, err := us.repo.FindByUsername(ctx, user.Username)
 	if err != nil {
 		return nil, errors.New("user not exist")
 	}
-	if !utils.IsPasswordCorrect(user.Password, dbu.Password) {
+	if !utils.IsPasswordCorrect(user.Password, dbUser.Password) {
 		return nil, errors.New("wrong password")
 	}
-	if dbu.Banned {
+	if dbUser.Banned {
 		return nil, errors.New("user banned")
 	}
-	tokenResponse, err := us.GenerateToken(dbu)
+	tokenResponse, err := us.GenerateToken(ctx, dbUser)
 	if err != nil {
 		return nil, err
 	}
-
-	userInfo := us.toUserInfo(dbu, 0)
-
+	userInfo, err := us.toUserInfo(ctx, dbUser, 0)
+	if err != nil {
+		return nil, err
+	}
 	return &response.Login{
 		UserInfo: userInfo,
 		Token:    tokenResponse,
@@ -73,13 +84,12 @@ func (us *UserService) Login(user *entity.User, env *entity.EnvInfo) (*response.
 	}, nil
 }
 
-func (us *UserService) GenerateToken(user *entity.User) (*response.Token, error) {
+func (us *UserService) GenerateToken(ctx context.Context, user *entity.User) (*response.Token, error) {
 	baseClaims := request.BaseClaims{
 		UserId:   user.ID,
 		Username: user.Username,
 		RoleType: user.Role,
 	}
-
 	accessClaims := utils.GenerateAccessClaims(baseClaims)
 	refreshClaims := utils.GenerateRefreshClaims(baseClaims)
 	accessToken, err := utils.GenerateAccessTokenFromClaims(accessClaims)
@@ -92,51 +102,57 @@ func (us *UserService) GenerateToken(user *entity.User) (*response.Token, error)
 	}
 
 	refreshTokenRecord, _ := utils.GetRefreshTokenRedis(user.ID)
-
 	if refreshTokenRecord != "" {
 		if err := utils.TokenJoinBlacklist(refreshTokenRecord); err != nil {
 			return nil, err
 		}
 	}
-
 	if err := utils.SetRefreshTokenRedis(user.ID, refreshToken); err != nil {
 		return nil, err
 	}
 
-	rp := &response.Token{
+	return &response.Token{
 		AccessToken:            accessToken,
 		RefreshToken:           refreshToken,
 		AccessTokenExpireTime:  global.GetConfig().JWT.AccessTokenExpireTime,
 		RefreshTokenExpireTime: global.GetConfig().JWT.RefreshTokenExpireTime,
-	}
-
-	return rp, nil
+	}, nil
 }
 
-func (us *UserService) GetUserInfoById(id uint, viewerId uint) (response.UserInfo, error) {
-	usr, err := us.getUserInstanceById(id)
-	if err != nil {
-		return response.UserInfo{}, err
-	}
-	return us.toUserInfo(usr, viewerId), nil
-}
+// ======================== User Query ========================
 
-func (us *UserService) GetAllUserInfo(viewerId uint) ([]response.UserInfo, error) {
-	var infos []response.UserInfo
-	users, err := us.getAllUserInstance()
+func (us *UserService) GetUserById(ctx context.Context, id uint, viewerId uint) (*response.UserInfo, error) {
+	user, err := us.repo.FindById(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	for _, usr := range users {
-		infos = append(infos, us.toUserInfo(&usr, viewerId))
+	info, err := us.toUserInfo(ctx, user, viewerId)
+	if err != nil {
+		return nil, err
 	}
-	return infos, nil
+	return &info, nil
 }
 
-func (us *UserService) UpdateUserProfile(userId uint, req request.UserUpdateRequest) (*response.UserUpdate, error) {
-	err := global.GetDB().Transaction(func(tx *gorm.DB) error {
+func (us *UserService) ListUsers(ctx context.Context, viewerId uint) (*response.UserList, error) {
+	users, err := us.repo.FindAll(ctx)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]response.UserInfo, len(users))
+	for i, u := range users {
+		info, _ := us.toUserInfo(ctx, &u, viewerId)
+		items[i] = info
+	}
+	return &response.UserList{Items: items}, nil
+}
+
+// ======================== Profile Update ========================
+
+func (us *UserService) UpdateProfile(ctx context.Context, userId uint, req request.UserUpdateRequest) (*response.UserUpdate, error) {
+	err := us.repo.WithTransaction(ctx, func(tx *gorm.DB) error {
+		txRepo := us.repo.WithTx(tx)
 		if req.NewUsername != "" {
-			if err := tx.Model(&entity.User{}).Where("id = ?", userId).Update("username", req.NewUsername).Error; err != nil {
+			if err := txRepo.UpdateUsername(ctx, userId, req.NewUsername); err != nil {
 				return err
 			}
 		}
@@ -157,234 +173,209 @@ func (us *UserService) UpdateUserProfile(userId uint, req request.UserUpdateRequ
 			updates["username"] = req.NewUsername
 		}
 		if len(updates) > 0 {
-			if err := tx.Model(&entity.UserProfile{}).Where("user_id = ?", userId).Updates(updates).Error; err != nil {
-				return err
-			}
+			return txRepo.UpdateProfileFields(ctx, userId, updates)
 		}
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
-	dbUser, err := us.getUserInstanceById(userId)
+	dbUser, err := us.repo.FindById(ctx, userId)
 	if err != nil {
 		return nil, err
 	}
-
-	return &response.UserUpdate{
-		Env:      req.Env,
-		UserInfo: us.toUserInfo(dbUser, 0),
-	}, nil
-}
-
-func (us *UserService) UpdateUserPassword(id uint, oldPassword string, newPassword string, env *entity.EnvInfo) (*response.UserUpdate, error) {
-	if !utils.IsPasswordValid(oldPassword) || !utils.IsPasswordValid(newPassword) {
-		return nil, errors.New("password invalid")
-	}
-	if !us.isPasswordCorrect(id, oldPassword) {
-		return nil, errors.New("wrong password")
-	}
-	hashedPassword := utils.EncryptPassword(newPassword)
-	if err := global.GetDB().Model(&entity.User{}).Where("id = ?", id).Update("password", hashedPassword).Error; err != nil {
+	info, err := us.toUserInfo(ctx, dbUser, 0)
+	if err != nil {
 		return nil, err
 	}
 	return &response.UserUpdate{
-		Env: env,
+		Env:      req.Env,
+		UserInfo: info,
 	}, nil
 }
 
-func (us *UserService) Follow(followerId, followingId uint) (*response.FollowStatus, error) {
+func (us *UserService) UpdatePassword(ctx context.Context, id uint, oldPassword, newPassword string, env *entity.EnvInfo) (*response.UserUpdate, error) {
+	if !utils.IsPasswordValid(oldPassword) || !utils.IsPasswordValid(newPassword) {
+		return nil, errors.New("password invalid")
+	}
+	dbPassword, err := us.repo.GetPassword(ctx, id)
+	if err != nil {
+		return nil, errors.New("wrong password")
+	}
+	if !utils.IsPasswordCorrect(oldPassword, dbPassword) {
+		return nil, errors.New("wrong password")
+	}
+	hashedPassword := utils.EncryptPassword(newPassword)
+	if err := us.repo.UpdatePassword(ctx, id, hashedPassword); err != nil {
+		return nil, err
+	}
+	return &response.UserUpdate{Env: env}, nil
+}
+
+// ======================== Follow ========================
+
+func (us *UserService) Follow(ctx context.Context, followerId, followingId uint) (*response.FollowStatus, error) {
 	if followerId == followingId {
 		return nil, errors.New("cannot follow yourself")
 	}
-
-	var targetUser entity.User
-	if err := global.GetDB().Where("id = ?", followingId).First(&targetUser).Error; err != nil {
+	targetUser, err := us.repo.FindById(ctx, followingId)
+	if err != nil {
 		return nil, errors.New("user not found")
 	}
 
-	var follow entity.UserFollow
-	result := global.GetDB().Where("follower_id = ? AND following_id = ?", followerId, followingId).First(&follow)
-
-	if result.RowsAffected > 0 {
-		// 已关注，取消关注
-		err := global.GetDB().Transaction(func(tx *gorm.DB) error {
-			if err := tx.Delete(&follow).Error; err != nil {
+	follow, err := us.repo.FindFollow(ctx, followerId, followingId)
+	if err == nil && follow != nil {
+		// Already following → unfollow
+		err = us.repo.WithTransaction(ctx, func(tx *gorm.DB) error {
+			txRepo := us.repo.WithTx(tx)
+			if err := txRepo.DeleteFollow(ctx, followerId, followingId); err != nil {
 				return err
 			}
 			if follow.IsMutual {
-				if err := tx.Model(&entity.UserFollow{}).
-					Where("follower_id = ? AND following_id = ?", followingId, followerId).
-					Update("is_mutual", false).Error; err != nil {
+				if err := txRepo.UpdateFollowMutual(ctx, followingId, followerId, false); err != nil {
 					return err
 				}
 			}
-			if err := tx.Model(&entity.UserProfile{}).Where("user_id = ?", followerId).
-				Update("following_count", gorm.Expr("GREATEST(following_count - 1, 0)")).Error; err != nil {
+			if err := txRepo.DecrementProfileCounter(ctx, followerId, "following_count"); err != nil {
 				return err
 			}
-			if err := tx.Model(&entity.UserProfile{}).Where("user_id = ?", followingId).
-				Update("follower_count", gorm.Expr("GREATEST(follower_count - 1, 0)")).Error; err != nil {
-				return err
-			}
-			return nil
+			return txRepo.DecrementProfileCounter(ctx, followingId, "follower_count")
 		})
 		if err != nil {
 			return nil, err
 		}
+		info, _ := us.toUserInfo(ctx, targetUser, followerId)
 		return &response.FollowStatus{
 			IsFollowing: false,
 			IsMutual:    false,
-			TargetUser:  us.toUserInfo(&targetUser, followerId),
+			TargetUser:  info,
 		}, nil
 	}
 
-	// 未关注，创建关注
+	// Not following → create follow
 	isMutual := false
-	err := global.GetDB().Transaction(func(tx *gorm.DB) error {
+	err = us.repo.WithTransaction(ctx, func(tx *gorm.DB) error {
+		txRepo := us.repo.WithTx(tx)
 		newFollow := entity.UserFollow{
 			FollowerId:  followerId,
 			FollowingId: followingId,
 		}
-
-		// 检查是否为互关
-		var reverse entity.UserFollow
-		if err := tx.Where("follower_id = ? AND following_id = ?", followingId, followerId).First(&reverse).Error; err == nil {
+		reverse, err := txRepo.FindFollow(ctx, followingId, followerId)
+		if err == nil && reverse != nil {
 			newFollow.IsMutual = true
 			isMutual = true
-			if err := tx.Model(&reverse).Update("is_mutual", true).Error; err != nil {
+			if err := txRepo.UpdateFollowMutual(ctx, followingId, followerId, true); err != nil {
 				return err
 			}
 		}
-
-		if err := tx.Create(&newFollow).Error; err != nil {
+		if err := txRepo.CreateFollow(ctx, &newFollow); err != nil {
 			return err
 		}
-		if err := tx.Model(&entity.UserProfile{}).Where("user_id = ?", followerId).
-			Update("following_count", gorm.Expr("following_count + 1")).Error; err != nil {
+		if err := txRepo.IncrementProfileCounter(ctx, followerId, "following_count"); err != nil {
 			return err
 		}
-		if err := tx.Model(&entity.UserProfile{}).Where("user_id = ?", followingId).
-			Update("follower_count", gorm.Expr("follower_count + 1")).Error; err != nil {
-			return err
-		}
-		return nil
+		return txRepo.IncrementProfileCounter(ctx, followingId, "follower_count")
 	})
 	if err != nil {
 		return nil, err
 	}
+	info, _ := us.toUserInfo(ctx, targetUser, followerId)
 	return &response.FollowStatus{
 		IsFollowing: true,
 		IsMutual:    isMutual,
-		TargetUser:  us.toUserInfo(&targetUser, followerId),
+		TargetUser:  info,
 	}, nil
 }
 
-func (us *UserService) GetFollowers(userId uint, viewerId uint, page, pageSize int) (response.FollowList, error) {
-	var total int64
-	if err := global.GetDB().Model(&entity.UserFollow{}).Where("following_id = ?", userId).Count(&total).Error; err != nil {
-		return response.FollowList{}, err
-	}
-
-	var follows []entity.UserFollow
-	offset := (page - 1) * pageSize
-	if err := global.GetDB().Where("following_id = ?", userId).Order("created_at desc").Offset(offset).Limit(pageSize).Find(&follows).Error; err != nil {
-		return response.FollowList{}, err
-	}
-
-	items := make([]response.UserInfo, len(follows))
-	for i, f := range follows {
-		usr, err := us.getUserInstanceById(f.FollowerId)
-		if err != nil {
-			continue
-		}
-		items[i] = us.toUserInfo(usr, viewerId)
-	}
-
-	return response.FollowList{
-		Items:    items,
-		Page:     page,
-		PageSize: pageSize,
-		Total:    total,
-	}, nil
-}
-
-func (us *UserService) GetFollowing(userId uint, viewerId uint, page, pageSize int) (response.FollowList, error) {
-	var total int64
-	if err := global.GetDB().Model(&entity.UserFollow{}).Where("follower_id = ?", userId).Count(&total).Error; err != nil {
-		return response.FollowList{}, err
-	}
-
-	var follows []entity.UserFollow
-	offset := (page - 1) * pageSize
-	if err := global.GetDB().Where("follower_id = ?", userId).Order("created_at desc").Offset(offset).Limit(pageSize).Find(&follows).Error; err != nil {
-		return response.FollowList{}, err
-	}
-
-	items := make([]response.UserInfo, len(follows))
-	for i, f := range follows {
-		usr, err := us.getUserInstanceById(f.FollowingId)
-		if err != nil {
-			continue
-		}
-		items[i] = us.toUserInfo(usr, viewerId)
-	}
-
-	return response.FollowList{
-		Items:    items,
-		Page:     page,
-		PageSize: pageSize,
-		Total:    total,
-	}, nil
-}
-
-func (us *UserService) GetSetting(userId uint) (*entity.UserSetting, error) {
-	var setting entity.UserSetting
-	if err := global.GetDB().Where("user_id = ?", userId).First(&setting).Error; err != nil {
+func (us *UserService) ListFollowers(ctx context.Context, userId, viewerId uint, page, pageSize int) (*response.FollowList, error) {
+	pagination, err := us.repo.ListFollowers(ctx, userId, page, pageSize)
+	if err != nil {
 		return nil, err
 	}
-	return &setting, nil
+	items := make([]response.UserInfo, len(pagination.Items))
+	for i, f := range pagination.Items {
+		user, err := us.repo.FindById(ctx, f.FollowerId)
+		if err != nil {
+			continue
+		}
+		info, _ := us.toUserInfo(ctx, user, viewerId)
+		items[i] = info
+	}
+	return &response.FollowList{
+		Items:    items,
+		Page:     pagination.Page,
+		PageSize: pagination.PageSize,
+		Total:    pagination.Total,
+	}, nil
 }
 
-func (us *UserService) UpdateSetting(userId uint, req request.UserSettingUpdateRequest) error {
+func (us *UserService) ListFollowing(ctx context.Context, userId, viewerId uint, page, pageSize int) (*response.FollowList, error) {
+	pagination, err := us.repo.ListFollowing(ctx, userId, page, pageSize)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]response.UserInfo, len(pagination.Items))
+	for i, f := range pagination.Items {
+		user, err := us.repo.FindById(ctx, f.FollowingId)
+		if err != nil {
+			continue
+		}
+		info, _ := us.toUserInfo(ctx, user, viewerId)
+		items[i] = info
+	}
+	return &response.FollowList{
+		Items:    items,
+		Page:     pagination.Page,
+		PageSize: pagination.PageSize,
+		Total:    pagination.Total,
+	}, nil
+}
+
+// ======================== Settings ========================
+
+func (us *UserService) GetSetting(ctx context.Context, userId uint) (*entity.UserSetting, error) {
+	return us.repo.FindSettingByUserId(ctx, userId)
+}
+
+func (us *UserService) UpdateSetting(ctx context.Context, userId uint, req request.UserSettingUpdateRequest) error {
 	if req.PostPublic == nil {
 		return nil
 	}
-	return global.GetDB().Model(&entity.UserSetting{}).Where("user_id = ?", userId).
-		Update("post_public", *req.PostPublic).Error
+	return us.repo.UpdateSettingPostPublic(ctx, userId, *req.PostPublic)
 }
 
-func (us *UserService) DeleteUserById(id int) error {
-	return global.DB.Delete(&entity.User{}, id).Error
+func (us *UserService) DeleteUserById(ctx context.Context, id uint) error {
+	return us.repo.DeleteById(ctx, id)
 }
 
-// toUserInfo 转换为 response.UserInfo，数据脱敏
-func (us *UserService) toUserInfo(usr *entity.User, viewerId uint) response.UserInfo {
-	var profile entity.UserProfile
-	if err := global.GetDB().Where("user_id = ?", usr.ID).First(&profile).Error; err != nil {
-		profile = entity.UserProfile{}
+// ======================== Internal Helpers ========================
+
+func (us *UserService) toUserInfo(ctx context.Context, user *entity.User, viewerId uint) (response.UserInfo, error) {
+	profile, err := us.repo.FindProfileByUserId(ctx, user.ID)
+	if err != nil {
+		profile = &entity.UserProfile{}
 	}
 
-	var isFollowed bool
-	if viewerId > 0 && viewerId != usr.ID {
-		var follow entity.UserFollow
-		if err := global.GetDB().Where("follower_id = ? AND following_id = ?", viewerId, usr.ID).First(&follow).Error; err == nil {
+	isFollowed := false
+	if viewerId > 0 && viewerId != user.ID {
+		follow, err := us.repo.FindFollow(ctx, viewerId, user.ID)
+		if err == nil && follow != nil {
 			isFollowed = true
 		}
 	}
 
 	return response.UserInfo{
-		UserId:               usr.ID,
-		CreatedAt:            usr.CreatedAt,
-		UpdatedAt:            usr.UpdatedAt,
-		Username:             usr.Username,
+		UserId:               user.ID,
+		CreatedAt:            user.CreatedAt,
+		UpdatedAt:            user.UpdatedAt,
+		Username:             user.Username,
 		Email:                profile.Email,
 		Phone:                profile.Phone,
 		Bio:                  profile.Bio,
 		Avatar:               profile.Avatar,
-		Admin:                usr.Admin,
-		Role:                 usr.Role,
-		Banned:               usr.Banned,
+		Admin:                user.Admin,
+		Role:                 user.Role,
+		Banned:               user.Banned,
 		FollowerCount:        profile.FollowerCount,
 		FollowingCount:       profile.FollowingCount,
 		PostCount:            profile.PostCount,
@@ -392,50 +383,5 @@ func (us *UserService) toUserInfo(usr *entity.User, viewerId uint) response.User
 		ReceivedLikeCount:    profile.ReceivedLikeCount,
 		ReceivedDislikeCount: profile.ReceivedDislikeCount,
 		IsFollowed:           isFollowed,
-	}
-}
-
-func (us *UserService) add(user *entity.User) error {
-	return global.DB.Create(user).Error
-}
-
-func (us *UserService) isUsernameExist(username string) bool {
-	return global.DB.Where("username = ?", username).First(&entity.User{}).Error == nil
-}
-
-func (us *UserService) isPasswordCorrect(id uint, clear string) bool {
-	var dbp string
-	err := global.DB.Model(&entity.User{}).Where("id = ?", id).Pluck("password", &dbp).Error
-	if err != nil {
-		return false
-	}
-	return utils.IsPasswordCorrect(clear, dbp)
-}
-
-func (us *UserService) getUserInstanceById(id uint) (*entity.User, error) {
-	var user entity.User
-	if err := global.DB.Where("id = ?", id).First(&user).Error; err != nil {
-		return nil, err
-	}
-	return &user, nil
-}
-
-func (us *UserService) getUserInstanceByUsername(username string) (*entity.User, error) {
-	var user entity.User
-	if err := global.DB.Where("username = ?", username).First(&user).Error; err != nil {
-		return nil, err
-	}
-	return &user, nil
-}
-
-func (us *UserService) getAllUserInstance() ([]entity.User, error) {
-	var users []entity.User
-	if err := global.DB.Find(&users).Error; err != nil {
-		return nil, err
-	}
-	return users, nil
-}
-
-func (us *UserService) update(user *entity.User) error {
-	return global.DB.Model(&entity.User{}).Where("id = ?", user.ID).Updates(user).Error
+	}, nil
 }

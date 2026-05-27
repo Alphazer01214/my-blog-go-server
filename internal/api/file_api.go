@@ -10,10 +10,13 @@ import (
 	"blog.alphazer01214.top/internal/global"
 	"blog.alphazer01214.top/internal/request"
 	"blog.alphazer01214.top/internal/response"
+	"blog.alphazer01214.top/internal/service"
 	"github.com/gin-gonic/gin"
 )
 
-type FileApi struct{}
+type FileApi struct {
+	fileService *service.FileService
+}
 
 func (fa *FileApi) InitUpload(c *gin.Context) {
 	var req request.UploadInitRequest
@@ -28,7 +31,7 @@ func (fa *FileApi) InitUpload(c *gin.Context) {
 		return
 	}
 
-	rp, err := fileService.InitUpload(cl.UserId, req.FileName, req.FileSize, req.MimeType, req.ChunkSize)
+	rp, err := fa.fileService.InitUpload(c.Request.Context(), cl.UserId, req.FileName, req.FileSize, req.MimeType, req.ChunkSize)
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
@@ -54,7 +57,7 @@ func (fa *FileApi) UploadChunk(c *gin.Context) {
 		return
 	}
 
-	rp, err := fileService.UploadChunk(uploadId, chunkIndex, c.Request.Body)
+	rp, err := fa.fileService.UploadChunk(c.Request.Context(), uploadId, chunkIndex, c.Request.Body)
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
@@ -75,7 +78,7 @@ func (fa *FileApi) CompleteUpload(c *gin.Context) {
 		return
 	}
 
-	rp, err := fileService.CompleteUpload(cl.UserId, req.UploadId, req.Title, req.Public)
+	rp, err := fa.fileService.CompleteUpload(c.Request.Context(), cl.UserId, req.UploadId, req.Title, req.Public)
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
@@ -90,7 +93,7 @@ func (fa *FileApi) GetUploadStatus(c *gin.Context) {
 		return
 	}
 
-	rp, err := fileService.GetUploadStatus(uploadId)
+	rp, err := fa.fileService.GetUploadStatus(c.Request.Context(), uploadId)
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
@@ -111,7 +114,7 @@ func (fa *FileApi) AbortUpload(c *gin.Context) {
 		return
 	}
 
-	if err := fileService.AbortUpload(cl.UserId, uploadId); err != nil {
+	if err := fa.fileService.AbortUpload(c.Request.Context(), cl.UserId, uploadId); err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
@@ -125,7 +128,7 @@ func (fa *FileApi) GetFile(c *gin.Context) {
 		return
 	}
 
-	rp, err := fileService.GetFileById(uint(id), GetUserId(c))
+	rp, err := fa.fileService.GetFileById(c.Request.Context(), uint(id), GetUserId(c))
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
@@ -140,7 +143,7 @@ func (fa *FileApi) DownloadFile(c *gin.Context) {
 		return
 	}
 
-	video, err := fileService.GetVideoById(uint(id))
+	video, err := fa.fileService.GetFileById(c.Request.Context(), uint(id), GetUserId(c))
 	if err != nil {
 		response.ErrorWithMsg(c, "file not found")
 		return
@@ -150,7 +153,7 @@ func (fa *FileApi) DownloadFile(c *gin.Context) {
 		return
 	}
 
-	localPath := filepath.Join(global.Config.Server.UploadDir, video.VideoSrcUrl)
+	localPath := filepath.Join(global.Config.Server.UploadDir, video.Path)
 	f, err := os.Open(localPath)
 	if err != nil {
 		response.ErrorWithMsg(c, "file not found on disk")
@@ -164,14 +167,14 @@ func (fa *FileApi) DownloadFile(c *gin.Context) {
 		return
 	}
 
-	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", video.Title))
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", video.Name))
 	c.Header("Accept-Ranges", "bytes")
-	http.ServeContent(c.Writer, c.Request, video.Title, info.ModTime(), f)
+	http.ServeContent(c.Writer, c.Request, video.Name, info.ModTime(), f)
 }
 
 func (fa *FileApi) ListFiles(c *gin.Context) {
 	page, pageSize := parsePagination(c)
-	rp, err := fileService.ListFiles(page, pageSize, GetUserId(c))
+	rp, err := fa.fileService.ListFiles(c.Request.Context(), page, pageSize, GetUserId(c))
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
@@ -186,7 +189,7 @@ func (fa *FileApi) GetFilesByUserId(c *gin.Context) {
 		return
 	}
 	page, pageSize := parsePagination(c)
-	rp, err := fileService.GetFilesByUserId(uint(userId), page, pageSize, GetUserId(c))
+	rp, err := fa.fileService.ListFilesByUserId(c.Request.Context(), uint(userId), page, pageSize, GetUserId(c))
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
@@ -207,7 +210,7 @@ func (fa *FileApi) DeleteFile(c *gin.Context) {
 		return
 	}
 
-	if err := fileService.DeleteFile(uint(id), cl.UserId); err != nil {
+	if err := fa.fileService.DeleteFile(c.Request.Context(), uint(id), cl.UserId); err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}

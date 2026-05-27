@@ -11,11 +11,14 @@ import (
 	"blog.alphazer01214.top/internal/entity"
 	"blog.alphazer01214.top/internal/request"
 	"blog.alphazer01214.top/internal/response"
+	"blog.alphazer01214.top/internal/service"
 	"blog.alphazer01214.top/internal/utils"
 	"github.com/gin-gonic/gin"
 )
 
-type AiApi struct{}
+type AiApi struct {
+	aiService *service.AIService
+}
 
 func (ap *AiApi) Create(c *gin.Context) {
 	ctx := c.Request.Context()
@@ -39,7 +42,7 @@ func (ap *AiApi) Create(c *gin.Context) {
 		ApiKey:    req.ApiKey,
 		ModelName: req.ModelName,
 	}
-	if _, err := aiService.CreateAgent(ctx, agent); err != nil {
+	if _, err := ap.aiService.CreateAgent(ctx, agent); err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
@@ -72,7 +75,7 @@ func (ap *AiApi) Update(c *gin.Context) {
 		Memories:  req.Memories,
 	}
 
-	if _, err := aiService.UpdateAgent(ctx, userId, agentId, newAgent); err != nil {
+	if _, err := ap.aiService.UpdateAgent(ctx, userId, agentId, newAgent); err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	} else {
@@ -95,7 +98,7 @@ func (ap *AiApi) Invoke(c *gin.Context) {
 	agentId := req.AgentId
 	ctx := c.Request.Context()
 
-	rp, err := aiService.InvokeAgent(ctx, userId, agentId, &req)
+	rp, err := ap.aiService.InvokeAgent(ctx, userId, agentId, &req)
 	if err != nil {
 		response.ErrorWithDetail(c, rp, "error")
 		return
@@ -110,7 +113,7 @@ func (ap *AiApi) QueryAgents(c *gin.Context) {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
-	agents, err := aiService.QueryAgentsByUser(c.Request.Context(), cl.UserId)
+	agents, err := ap.aiService.QueryAgentsByUser(c.Request.Context(), cl.UserId)
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
@@ -129,7 +132,7 @@ func (ap *AiApi) QueryAgentById(c *gin.Context) {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
-	agent, err := aiService.QueryAgentById(c.Request.Context(), cl.UserId, uint(id))
+	agent, err := ap.aiService.QueryAgentById(c.Request.Context(), cl.UserId, uint(id))
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
@@ -144,16 +147,16 @@ func (ap *AiApi) ListChats(c *gin.Context) {
 		return
 	}
 	page, pageSize := parsePagination(c)
-	sessions, total, err := aiService.ListChatSessions(c.Request.Context(), cl.UserId, page, pageSize)
+	sessions, total, err := ap.aiService.ListChatSessions(c.Request.Context(), cl.UserId, page, pageSize)
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
-	response.SuccessWithDetail(c, gin.H{
-		"items":     sessions,
+	response.SuccessWithDetail(c, map[string]interface{}{
+		"sessions":  sessions,
+		"total":     total,
 		"page":      page,
 		"page_size": pageSize,
-		"total":     total,
 	}, "query chats success")
 }
 
@@ -168,7 +171,7 @@ func (ap *AiApi) GetChatSession(c *gin.Context) {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
-	session, err := aiService.GetChatSession(c.Request.Context(), cl.UserId, chatId)
+	session, err := ap.aiService.GetChatSession(c.Request.Context(), cl.UserId, chatId)
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
@@ -195,7 +198,7 @@ func (ap *AiApi) GetChatSession(c *gin.Context) {
 //	ctx := context.Background()
 //
 //	// 检查 Redis 中是否有未完成的流式内容
-//	redisMsg, exists := aiService.getChatFromRedis(ctx, chatId)
+//	redisMsg, exists := ap.aiService.getChatFromRedis(ctx, chatId)
 //	if !exists || redisMsg == nil {
 //		response.ErrorWithMsg(c, "no streaming session found in redis")
 //		return
@@ -255,7 +258,7 @@ func (ap *AiApi) GetChatSession(c *gin.Context) {
 //	}
 //
 //	// 等待流式完成（不重新生成，只等待）
-//	if err := aiService.WaitForStreamComplete(ctx, userId, chatId, pushStream); err != nil {
+//	if err := ap.aiService.WaitForStreamComplete(ctx, userId, chatId, pushStream); err != nil {
 //		rp.Status = false
 //		rp.Message = err.Error()
 //		_ = writeSSE(rp)
@@ -315,7 +318,7 @@ func (ap *AiApi) OnlineStreamChat(c *gin.Context) {
 		return nil
 	}
 
-	history := aiService.GetChatHistory(ctx, userId, chatId)
+	history := ap.aiService.GetChatHistory(ctx, userId, chatId)
 	if err := writeSSE(response.OnlineStreamChatResponse{
 		ChatId:  chatId,
 		AgentId: agentId,
@@ -333,7 +336,7 @@ func (ap *AiApi) OnlineStreamChat(c *gin.Context) {
 		rp.Content = data
 		return writeSSE(rp)
 	}
-	if err := aiService.StreamChat(ctx, userId, agentId, chatId, &req, pushStream); err != nil {
+	if err := ap.aiService.StreamChat(ctx, userId, agentId, chatId, &req, pushStream); err != nil {
 		rp.Status = false
 		rp.Message = err.Error()
 		_ = writeSSE(rp)

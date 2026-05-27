@@ -15,10 +15,13 @@ import (
 	"blog.alphazer01214.top/internal/entity"
 	"blog.alphazer01214.top/internal/request"
 	"blog.alphazer01214.top/internal/response"
+	"blog.alphazer01214.top/internal/service"
 	"github.com/gin-gonic/gin"
 )
 
 type VideoApi struct {
+	videoService *service.VideoService
+	userService  *service.UserService
 }
 
 func (va *VideoApi) InitUpload(c *gin.Context) {
@@ -54,7 +57,7 @@ func (va *VideoApi) InitUpload(c *gin.Context) {
 		ForbidShare:   req.ForbidShare,
 	}
 
-	session, err := videoService.InitUpload(ctx, userId, initReq, vReq)
+	session, err := va.videoService.InitUpload(ctx, userId, initReq, vReq)
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
@@ -127,7 +130,7 @@ func (va *VideoApi) UploadChunk(c *gin.Context) {
 			return
 		}
 
-		if err := videoService.SaveChunk(ctx, data, req); err == nil {
+		if err := va.videoService.SaveChunk(ctx, data, req); err == nil {
 			response.SuccessWithMsg(c, "upload "+strconv.Itoa(req.ChunkIndex)+" success")
 			return
 		}
@@ -148,7 +151,7 @@ func (va *VideoApi) Merge(c *gin.Context) {
 		return
 	}
 
-	if err := videoService.Merge(ctx, req.UploadId); err != nil {
+	if err := va.videoService.Merge(ctx, req.UploadId); err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
@@ -163,7 +166,7 @@ func (va *VideoApi) Stream(c *gin.Context) {
 		return
 	}
 
-	video, err := videoService.GetVideoEntityById(uint(id))
+	video, err := va.videoService.GetVideoById(c.Request.Context(), uint(id), GetUserId(c))
 	if err != nil {
 		response.ErrorWithMsg(c, "video not found")
 		return
@@ -231,7 +234,7 @@ func (va *VideoApi) Create(c *gin.Context) {
 		return
 	}
 
-	if _, err := videoService.Create(c.Request.Context(), cl.UserId, req, 0); err != nil {
+	if _, err := va.videoService.Create(c.Request.Context(), cl.UserId, req, 0); err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
@@ -246,7 +249,7 @@ func (va *VideoApi) Query(c *gin.Context) {
 		return
 	}
 
-	vd, err := videoService.GetVideoById(uint(id), GetUserId(c))
+	vd, err := va.videoService.GetVideoById(c.Request.Context(), uint(id), GetUserId(c))
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
@@ -260,17 +263,15 @@ func (va *VideoApi) QueryAll(c *gin.Context) {
 	keyword := c.Query("keyword")
 	page, pageSize := parsePagination(c)
 
-	var list response.VideoList
+	var list *response.VideoList
 	var err error
 
 	if keyword != "" {
-		list, err = videoService.SearchVideo(&request.VideoSearchRequest{
-			Keyword: keyword,
-		}, page, pageSize, GetUserId(c))
+		list, err = va.videoService.SearchVideos(c.Request.Context(), keyword, page, pageSize, GetUserId(c))
 	} else if category != "" {
-		list, err = videoService.GetVideosByCategory(category, page, pageSize, GetUserId(c))
+		list, err = va.videoService.ListVideosByCategory(c.Request.Context(), category, page, pageSize, GetUserId(c))
 	} else {
-		list, err = videoService.GetAllVideos(page, pageSize, GetUserId(c))
+		list, err = va.videoService.ListVideos(c.Request.Context(), page, pageSize, GetUserId(c))
 	}
 
 	if err != nil {
@@ -289,7 +290,7 @@ func (va *VideoApi) ListByUserId(c *gin.Context) {
 	}
 	page, pageSize := parsePagination(c)
 
-	list, err := videoService.GetVideosByUserId(uint(userId), page, pageSize, GetUserId(c))
+	list, err := va.videoService.ListVideosByUserId(c.Request.Context(), uint(userId), page, pageSize, GetUserId(c))
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
@@ -318,7 +319,7 @@ func (va *VideoApi) Update(c *gin.Context) {
 		return
 	}
 
-	video, err := videoService.GetVideoEntityById(uint(id))
+	video, err := va.videoService.GetVideoById(c.Request.Context(), uint(id), cl.UserId)
 	if err != nil {
 		response.ErrorWithMsg(c, "video not found")
 		return
@@ -328,7 +329,7 @@ func (va *VideoApi) Update(c *gin.Context) {
 		return
 	}
 
-	if err := videoService.Update(uint(id), req); err != nil {
+	if err := va.videoService.UpdateVideo(c.Request.Context(), uint(id), req); err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
@@ -349,7 +350,7 @@ func (va *VideoApi) Delete(c *gin.Context) {
 		return
 	}
 
-	video, err := videoService.GetVideoEntityById(uint(id))
+	video, err := va.videoService.GetVideoById(c.Request.Context(), uint(id), cl.UserId)
 	if err != nil {
 		response.ErrorWithMsg(c, "video not found")
 		return
@@ -359,7 +360,7 @@ func (va *VideoApi) Delete(c *gin.Context) {
 		return
 	}
 
-	if err := videoService.DeleteById(uint(id)); err != nil {
+	if err := va.videoService.DeleteVideoById(c.Request.Context(), uint(id)); err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
@@ -380,7 +381,7 @@ func (va *VideoApi) Like(c *gin.Context) {
 		return
 	}
 
-	if err := videoService.Like(req.VideoId, cl.UserId); err != nil {
+	if err := va.videoService.ToggleLike(c.Request.Context(), req.VideoId, cl.UserId); err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
@@ -401,7 +402,7 @@ func (va *VideoApi) Dislike(c *gin.Context) {
 		return
 	}
 
-	if err := videoService.Dislike(req.VideoId, cl.UserId); err != nil {
+	if err := va.videoService.ToggleDislike(c.Request.Context(), req.VideoId, cl.UserId); err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
@@ -422,7 +423,7 @@ func (va *VideoApi) Favorite(c *gin.Context) {
 		return
 	}
 
-	if err := videoService.Favorite(req.VideoId, cl.UserId); err != nil {
+	if err := va.videoService.ToggleFavorite(c.Request.Context(), req.VideoId, cl.UserId); err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
@@ -456,7 +457,7 @@ func (va *VideoApi) Share(c *gin.Context) {
 		return
 	}
 
-	if err := videoService.Share(req.VideoId, cl.UserId, shareInfoEntity); err != nil {
+	if err := va.videoService.Share(c.Request.Context(), req.VideoId, cl.UserId, shareInfoEntity); err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}

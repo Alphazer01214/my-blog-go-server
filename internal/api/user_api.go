@@ -8,11 +8,13 @@ import (
 	"blog.alphazer01214.top/internal/global"
 	"blog.alphazer01214.top/internal/request"
 	"blog.alphazer01214.top/internal/response"
+	"blog.alphazer01214.top/internal/service"
 	"blog.alphazer01214.top/internal/utils"
 	"github.com/gin-gonic/gin"
 )
 
 type UserApi struct {
+	userService *service.UserService
 }
 
 func (u *UserApi) Register(c *gin.Context) {
@@ -33,7 +35,7 @@ func (u *UserApi) Register(c *gin.Context) {
 		Role:     entity.RoleNormalUser,
 		Banned:   false,
 	}
-	rp, err := userService.Register(usr, req.Env)
+	rp, err := u.userService.Register(c.Request.Context(), usr, req.Env)
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
@@ -52,7 +54,7 @@ func (u *UserApi) Login(c *gin.Context) {
 		Username: req.Username,
 		Password: req.Password,
 	}
-	loginResponse, err := userService.Login(usr, req.Env)
+	loginResponse, err := u.userService.Login(c.Request.Context(), usr, req.Env)
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
@@ -104,7 +106,7 @@ func (u *UserApi) UpdatePassword(c *gin.Context) {
 	}
 	userId := cl.UserId
 
-	rp, err := userService.UpdateUserPassword(userId, req.OldPassword, req.NewPassword, req.Env)
+	rp, err := u.userService.UpdatePassword(c.Request.Context(), userId, req.OldPassword, req.NewPassword, req.Env)
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
@@ -125,7 +127,7 @@ func (u *UserApi) UpdateProfile(c *gin.Context) {
 		return
 	}
 
-	rp, err := userService.UpdateUserProfile(cl.UserId, req)
+	rp, err := u.userService.UpdateProfile(c.Request.Context(), cl.UserId, req)
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
@@ -139,7 +141,7 @@ func (u *UserApi) CurrentUser(c *gin.Context) {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
-	info, err := userService.GetUserInfoById(cl.UserId, 0)
+	info, err := u.userService.GetUserById(c.Request.Context(), cl.UserId, 0)
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
@@ -153,7 +155,7 @@ func (u *UserApi) QueryUserById(c *gin.Context) {
 		response.ErrorWithMsg(c, "invalid id")
 		return
 	}
-	rp, err := userService.GetUserInfoById(uint(id), GetUserId(c))
+	rp, err := u.userService.GetUserById(c.Request.Context(), uint(id), GetUserId(c))
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
@@ -162,7 +164,7 @@ func (u *UserApi) QueryUserById(c *gin.Context) {
 }
 
 func (u *UserApi) GetAllUsers(c *gin.Context) {
-	usrInfo, err := userService.GetAllUserInfo(GetUserId(c))
+	usrInfo, err := u.userService.ListUsers(c.Request.Context(), GetUserId(c))
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
@@ -183,7 +185,7 @@ func (u *UserApi) Follow(c *gin.Context) {
 		return
 	}
 
-	rp, err := userService.Follow(cl.UserId, req.FollowingId)
+	rp, err := u.userService.Follow(c.Request.Context(), cl.UserId, req.FollowingId)
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
@@ -198,7 +200,7 @@ func (u *UserApi) GetFollowers(c *gin.Context) {
 		return
 	}
 	page, pageSize := parsePagination(c)
-	rp, err := userService.GetFollowers(uint(id), GetUserId(c), page, pageSize)
+	rp, err := u.userService.ListFollowers(c.Request.Context(), uint(id), GetUserId(c), page, pageSize)
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
@@ -213,7 +215,7 @@ func (u *UserApi) GetFollowing(c *gin.Context) {
 		return
 	}
 	page, pageSize := parsePagination(c)
-	rp, err := userService.GetFollowing(uint(id), GetUserId(c), page, pageSize)
+	rp, err := u.userService.ListFollowing(c.Request.Context(), uint(id), GetUserId(c), page, pageSize)
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
@@ -227,7 +229,7 @@ func (u *UserApi) GetSettings(c *gin.Context) {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
-	setting, err := userService.GetSetting(cl.UserId)
+	setting, err := u.userService.GetSetting(c.Request.Context(), cl.UserId)
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
@@ -253,7 +255,7 @@ func (u *UserApi) UpdateSettings(c *gin.Context) {
 		return
 	}
 
-	if err := userService.UpdateSetting(cl.UserId, req); err != nil {
+	if err := u.userService.UpdateSetting(c.Request.Context(), cl.UserId, req); err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}

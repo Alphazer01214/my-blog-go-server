@@ -20,17 +20,18 @@ type Apis struct {
 	VideoApi
 }
 
-var Api = new(Apis)
-
-var (
-	userService    = service.Service.UserService
-	postService    = service.Service.PostService
-	commentService = service.Service.CommentService
-	aiService      = service.Service.AIService
-	marketService  = service.Service.MarketService
-	fileService    = service.Service.FileService
-	videoService   = service.Service.VideoService
-)
+func NewApis(svc *service.Services) *Apis {
+	return &Apis{
+		UserApi:    UserApi{userService: svc.UserService},
+		PostApi:    PostApi{postService: svc.PostService, aiService: svc.AIService, userService: svc.UserService},
+		CommentApi: CommentApi{commentService: svc.CommentService},
+		AiApi:      AiApi{aiService: svc.AIService},
+		MarketApi:  MarketApi{marketService: svc.MarketService},
+		FileApi:    FileApi{fileService: svc.FileService},
+		TomoriApi:  TomoriApi{tomoriService: svc.TomoriService},
+		VideoApi:   VideoApi{videoService: svc.VideoService, userService: svc.UserService},
+	}
+}
 
 func Authorize(c *gin.Context) (request.AccessClaims, error) {
 	claims, exist := c.Get("claims")
@@ -47,7 +48,6 @@ func Authorize(c *gin.Context) (request.AccessClaims, error) {
 	return request.AccessClaims{}, errors.New("wrong claims format")
 }
 
-// GetUserId 从 context 中获取当前登录用户 ID，未登录返回 0
 func GetUserId(c *gin.Context) uint {
 	claims, exist := c.Get("claims")
 	if !exist {

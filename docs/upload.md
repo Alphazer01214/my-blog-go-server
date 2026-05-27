@@ -1,179 +1,270 @@
-# 文件上传 API
+# Upload API
 
-通用文件分块上传系统。支持大文件分片、断点续传。
-
-## 目录
-
-| 端点 | 方法 | 说明 | 是否需要登录 |
-|------|------|------|------------|
-| `/api/upload` | POST | 上传完成初始化 | 是 |
-| `/api/upload/chunk` | PUT | 上传文件块（二进制） | 是 |
-| `/api/upload/complete` | POST | 合并文件块 | 是 |
-| `/api/upload/uploaded` | GET | 获取已上传块序号 | 是 |
-| `/api/upload/cancel` | POST | 取消上传 | 是 |
-| `/api/files/:id` | GET | 获取已上传文件信息 | 是 |
-| `/api/files` | GET | 获取文件列表 | 是 |
-
----
-
-## 上传流程
-
-```
-1. POST /api/upload         → 初始化，获取 upload_id
-2. PUT  /api/upload/chunk   → 逐块上传二进制数据（循环）
-3. POST /api/upload/complete → 通知服务端合并文件
-```
-
-**可选**：发送完部分块后，GET `/api/upload/uploaded` 查询已收到的块，实现断点续传。
+| Method | Endpoint                   | Description             |
+| ------ | -------------------------- | ----------------------- |
+| POST   | /api/upload/init           | Init chunked upload     |
+| POST   | /api/upload/chunk          | Upload chunk            |
+| POST   | /api/upload/complete       | Complete upload         |
+| GET    | /api/upload/:uploadId/status | Get upload status     |
+| POST   | /api/upload/:uploadId/abort | Abort upload           |
+| GET    | /api/file/:id              | Get file detail         |
+| GET    | /api/file/:id/download     | Download file           |
+| GET    | /api/files                 | List files              |
+| GET    | /api/user/:id/files        | Get user's files        |
+| DELETE | /api/file/:id              | Delete file             |
 
 ---
 
-## 端点详情
+## POST /api/upload/init
 
-### POST /api/upload
+Initialize a chunked file upload session. Requires authentication.
 
-初始化上传任务。
-
-**Request Body**：
+**Request Body:**
 
 ```json
 {
-  "filename": "image.png",
-  "md5": "文件 MD5（可选）",
-  "target": "post"
+  "filename": "string (required)",
+  "file_size": 10485760,
+  "mime_type": "application/pdf",
+  "chunk_size": 1048576
 }
 ```
 
-- `target`：上传用途标识，如 `post`、`avatar`、`background` 等
-
-**Response**：
+**Response:**
 
 ```json
 {
+  "code": 0,
   "data": {
-    "upload_id": "uuid",
-    "chunk_size": 5242880,
-    "chunk_total": 3,
-    "upload_status": "pending",
-    "created_at": "2024-01-01T00:00:00Z"
-  }
+    "upload_id": "uuid-string",
+    "chunk_size": 1048576,
+    "total_chunks": 10
+  },
+  "msg": "success"
 }
 ```
 
-- `chunk_size`：每块大小（默认 5MB = 5242880 字节）
-- `chunk_total`：总块数
+---
 
-### PUT /api/upload/chunk
+## POST /api/upload/chunk
 
-上传一个文件块。
+Upload a single chunk. Requires authentication.
 
-**Headers**：
+**Request Body:** Multipart form data with:
+- `upload_id` (string) - Upload session ID
+- `chunk_index` (integer) - Chunk index (0-based)
+- `chunk_hash` (string) - Hash of the chunk data
+- Binary chunk data in the file field
 
-| Header | 说明 |
-|--------|------|
-| `X-Upload-Id` | 初始化返回的 upload_id（字符串） |
-| `X-Chunk-Index` | 当前块序号（从 0 开始，字符串） |
-
-**Body**：文件块的**原始二进制数据**（非 multipart）。
-
-**Response**：`204 No Content`（成功无 body）。
-
-### POST /api/upload/complete
-
-通知服务端所有块已上传完成，开始合并。
-
-**Request Body**：
+**Response:**
 
 ```json
 {
-  "upload_id": "uuid",
-  "md5": "（可选）服务端会校验 MD5",
-  "filename": "最终文件名（可选）"
-}
-```
-
-**Response**：
-
-```json
-{
+  "code": 0,
   "data": {
-    "upload_id": "uuid",
-    "file_path": "/uploads/2024/image.png",
-    "file_size": 15728640,
-    "upload_status": "completed"
-  }
+    "chunk_index": 0,
+    "checksum": "sha256-hash"
+  },
+  "msg": "chunk uploaded"
 }
 ```
 
-### GET /api/upload/uploaded
+---
 
-获取已上传的块序号列表（用于断点续传）。
+## POST /api/upload/complete
 
-**Query 参数**：
+Complete a chunked upload and create the file record. Requires authentication.
 
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `upload_id` | string | 是 | 初始化返回的 upload_id |
-
-**Response**：
+**Request Body:**
 
 ```json
 {
-  "data": {
-    "upload_id": "uuid",
-    "uploaded_chunks": [0, 1]
-  }
+  "upload_id": "string (required)",
+  "title": "string (optional)",
+  "public": true
 }
 ```
 
-### POST /api/upload/cancel
-
-取消上传并清理临时文件。
-
-**Request Body**：
+**Response:**
 
 ```json
 {
-  "upload_id": "uuid"
-}
-```
-
-### GET /api/files/:id
-
-获取指定文件记录。
-
-**Response**：
-
-```json
-{
+  "code": 0,
   "data": {
     "id": 1,
-    "upload_id": "uuid",
-    "original_name": "image.png",
-    "file_path": "/uploads/2024/image.png",
-    "file_size": 15728640,
-    "mime_type": "image/png",
-    "upload_status": "completed",
-    "md5": "文件的 md5",
-    "target": "post",
-    "created_at": "2024-01-01T00:00:00Z"
-  }
+    "created_at": "2026-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "user_id": 1,
+    "name": "document.pdf",
+    "path": "/uploads/2026/01/uuid.pdf",
+    "size": 10485760,
+    "mime_type": "application/pdf",
+    "public": true,
+    "duration": 0,
+    "cover_url": "",
+    "view_count": 0,
+    "like_count": 0,
+    "dislike_count": 0,
+    "favorite_count": 0,
+    "share_count": 0
+  },
+  "msg": "success"
 }
 ```
 
-### GET /api/files
+---
 
-获取当前用户的所有文件列表。支持分页。
+## GET /api/upload/:uploadId/status
 
-**Response**：
+Get the status of an upload session. Requires authentication.
+
+**Path Parameters:**
+- `uploadId` (string) - Upload session ID
+
+**Response:**
 
 ```json
 {
+  "code": 0,
   "data": {
-    "items": [ /* 同 GET /api/files/:id 格式 */ ],
-    "page": 1,
-    "page_size": 20,
-    "total": 5
-  }
+    "upload_id": "uuid-string",
+    "status": "uploading",
+    "uploaded_count": 5,
+    "total_chunks": 10,
+    "uploaded_chunks": [0, 1, 2, 3, 4]
+  },
+  "msg": "success"
+}
+```
+
+---
+
+## POST /api/upload/:uploadId/abort
+
+Abort an upload session. Requires authentication.
+
+**Path Parameters:**
+- `uploadId` (string) - Upload session ID
+
+**Response:**
+
+```json
+{
+  "code": 0,
+  "data": {},
+  "msg": "upload aborted"
+}
+```
+
+---
+
+## GET /api/file/:id
+
+Get file detail by ID.
+
+**Path Parameters:**
+- `id` (integer) - File ID
+
+**Response:**
+
+```json
+{
+  "code": 0,
+  "data": {
+    "id": 1,
+    "created_at": "2026-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "user_id": 1,
+    "name": "document.pdf",
+    "path": "/uploads/2026/01/uuid.pdf",
+    "size": 10485760,
+    "mime_type": "application/pdf",
+    "public": true,
+    "duration": 0,
+    "cover_url": "",
+    "view_count": 10,
+    "like_count": 2,
+    "dislike_count": 0,
+    "favorite_count": 1,
+    "share_count": 0
+  },
+  "msg": "success"
+}
+```
+
+---
+
+## GET /api/file/:id/download
+
+Download a file. Returns the raw file binary.
+
+**Path Parameters:**
+- `id` (integer) - File ID
+
+**Response:** Binary file stream with appropriate Content-Type header.
+
+---
+
+## GET /api/files
+
+List all public files with pagination.
+
+**Query Parameters:**
+- `page` (integer, default: 1) - Page number
+- `page_size` (integer, default: 10) - Items per page
+
+**Response:**
+
+```json
+{
+  "code": 0,
+  "data": [
+    { "...FileDetail..." }
+  ],
+  "msg": "success"
+}
+```
+
+---
+
+## GET /api/user/:id/files
+
+Get files uploaded by a specific user.
+
+**Path Parameters:**
+- `id` (integer) - User ID
+
+**Query Parameters:**
+- `page` (integer, default: 1) - Page number
+- `page_size` (integer, default: 10) - Items per page
+
+**Response:**
+
+```json
+{
+  "code": 0,
+  "data": [
+    { "...FileDetail..." }
+  ],
+  "msg": "success"
+}
+```
+
+---
+
+## DELETE /api/file/:id
+
+Delete a file. Requires authentication (must be owner or admin).
+
+**Path Parameters:**
+- `id` (integer) - File ID
+
+**Response:**
+
+```json
+{
+  "code": 0,
+  "data": {},
+  "msg": "deleted"
 }
 ```

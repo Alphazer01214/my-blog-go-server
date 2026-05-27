@@ -5,13 +5,16 @@ import (
 	"time"
 
 	"blog.alphazer01214.top/internal/response"
+	"blog.alphazer01214.top/internal/service"
 	"github.com/gin-gonic/gin"
 )
 
-type MarketApi struct{}
+type MarketApi struct {
+	marketService *service.MarketService
+}
 
 func (ma *MarketApi) GetIndices(c *gin.Context) {
-	rp, err := marketService.FetchIndices()
+	rp, err := ma.marketService.GetIndices()
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
@@ -46,7 +49,7 @@ func (ma *MarketApi) GetHistory(c *gin.Context) {
 		to = time.UnixMilli(ts)
 	}
 
-	rp, err := marketService.FetchHistory(from, to)
+	rp, err := ma.marketService.GetHistory(from, to)
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return

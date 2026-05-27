@@ -7,10 +7,14 @@ import (
 	"blog.alphazer01214.top/internal/entity"
 	"blog.alphazer01214.top/internal/request"
 	"blog.alphazer01214.top/internal/response"
+	"blog.alphazer01214.top/internal/service"
 	"github.com/gin-gonic/gin"
 )
 
-type CommentApi struct{}
+type CommentApi struct {
+	commentService *service.CommentService
+	userService    *service.UserService
+}
 
 func (ca *CommentApi) Create(c *gin.Context) {
 	var req request.CommentCreateRequest
@@ -42,7 +46,7 @@ func (ca *CommentApi) Create(c *gin.Context) {
 		ParentCommentId: req.ParentCommentId,
 	}
 
-	r, err := commentService.Create(comment)
+	r, err := ca.commentService.Create(c.Request.Context(), comment)
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
@@ -61,18 +65,13 @@ func (ca *CommentApi) ListCommentsByPostId(c *gin.Context) {
 	page, pageSize := parsePagination(c)
 	viewerId := GetUserId(c)
 
-	comments, total, err := commentService.GetCommentsByPostId(uint(postId), page, pageSize, viewerId)
+	result, err := ca.commentService.ListCommentsByPostId(c.Request.Context(), uint(postId), page, pageSize, viewerId)
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
 
-	response.SuccessWithDetail(c, response.CommentList{
-		Items:    comments,
-		Page:     page,
-		PageSize: pageSize,
-		Total:    total,
-	}, "query success")
+	response.SuccessWithDetail(c, result, "query success")
 }
 
 func (ca *CommentApi) ListCommentsByVideoId(c *gin.Context) {
@@ -85,18 +84,13 @@ func (ca *CommentApi) ListCommentsByVideoId(c *gin.Context) {
 	page, pageSize := parsePagination(c)
 	viewerId := GetUserId(c)
 
-	comments, total, err := commentService.GetCommentsByVideoId(uint(videoId), page, pageSize, viewerId)
+	result, err := ca.commentService.ListCommentsByVideoId(c.Request.Context(), uint(videoId), page, pageSize, viewerId)
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
 
-	response.SuccessWithDetail(c, response.CommentList{
-		Items:    comments,
-		Page:     page,
-		PageSize: pageSize,
-		Total:    total,
-	}, "query success")
+	response.SuccessWithDetail(c, result, "query success")
 }
 
 func (ca *CommentApi) ListCommentsByUserId(c *gin.Context) {
@@ -106,7 +100,7 @@ func (ca *CommentApi) ListCommentsByUserId(c *gin.Context) {
 		response.ErrorWithMsg(c, "invalid user id")
 		return
 	}
-	userSetting, err := userService.GetSetting(uint(userId))
+	userSetting, err := ca.userService.GetSetting(c.Request.Context(), uint(userId))
 	if err != nil {
 		response.ErrorWithMsg(c, "can't get user setting")
 		return
@@ -120,18 +114,12 @@ func (ca *CommentApi) ListCommentsByUserId(c *gin.Context) {
 		}, "user comment is private")
 		return
 	}
-	comments, total, err := commentService.GetCommentsByUserId(uint(userId), page, pageSize)
+	result, err := ca.commentService.ListCommentsByUserId(c.Request.Context(), uint(userId), page, pageSize, 0)
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
-	response.SuccessWithDetail(c, response.CommentList{
-		Items:    comments,
-		Page:     page,
-		PageSize: pageSize,
-		Total:    total,
-	}, "query success")
-
+	response.SuccessWithDetail(c, result, "query success")
 }
 
 func (ca *CommentApi) Delete(c *gin.Context) {
@@ -147,7 +135,7 @@ func (ca *CommentApi) Delete(c *gin.Context) {
 		return
 	}
 
-	if err := commentService.Delete(uint(id), cl.UserId); err != nil {
+	if err := ca.commentService.DeleteCommentById(c.Request.Context(), uint(id), cl.UserId); err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
@@ -168,7 +156,7 @@ func (ca *CommentApi) Like(c *gin.Context) {
 		return
 	}
 
-	if err := commentService.Like(req.CommentId, cl.UserId); err != nil {
+	if err := ca.commentService.ToggleLike(c.Request.Context(), req.CommentId, cl.UserId); err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
@@ -189,7 +177,7 @@ func (ca *CommentApi) Dislike(c *gin.Context) {
 		return
 	}
 
-	if err := commentService.Dislike(req.CommentId, cl.UserId); err != nil {
+	if err := ca.commentService.ToggleDislike(c.Request.Context(), req.CommentId, cl.UserId); err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}

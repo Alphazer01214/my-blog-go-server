@@ -8,8 +8,10 @@ import (
 	"syscall"
 
 	"blog.alphazer01214.top/cmd"
+	"blog.alphazer01214.top/internal/api"
 	"blog.alphazer01214.top/internal/global"
 	"blog.alphazer01214.top/internal/keepalive"
+	"blog.alphazer01214.top/internal/repository"
 	"blog.alphazer01214.top/internal/router"
 	"blog.alphazer01214.top/internal/service"
 	"blog.alphazer01214.top/internal/utils"
@@ -27,41 +29,34 @@ func main() {
 	cmd.InitFlag()
 	gin.SetMode(global.Config.Server.Mode)
 
-	// 创建 Gin 路由实例
-	r := gin.Default()
+	repos := repository.NewRepositories(global.GetDB())
+	svc := service.NewServices(repos)
+	apiHandlers := api.NewApis(svc)
 
-	// 应用 CORS 中间件
+	r := gin.Default()
 	r.Use(middleware.CORSMiddleware())
 
-	// 健康检查端点
 	r.GET("/ping", func(c *gin.Context) {
-		c.JSON(200, gin.H{
-			"message": "OK",
-		})
+		c.JSON(200, gin.H{"message": "OK"})
 	})
 
-	// 设置用户路由
-	router.SetupUserRouter(r)
-	router.SetupPostRouter(r)
-	router.SetupCommentRouter(r)
-	router.SetupServiceRouter(r)
-	router.SetupFileRouter(r)
-	router.SetupTomoriRouter(r)
-	router.SetupVideoRouter(r)
+	router.SetupUserRouter(r, apiHandlers, svc.UserService)
+	router.SetupPostRouter(r, apiHandlers, svc.UserService)
+	router.SetupCommentRouter(r, apiHandlers, svc.UserService)
+	router.SetupServiceRouter(r, apiHandlers, svc.UserService)
+	router.SetupFileRouter(r, apiHandlers, svc.UserService)
+	router.SetupTomoriRouter(r, apiHandlers, svc.UserService)
+	router.SetupVideoRouter(r, apiHandlers, svc.UserService)
 
-	// keepalive 后台任务
 	ka := keepalive.NewManager()
-
-	marketSvc := &service.Service.MarketService
+	marketSvc := svc.MarketService
 	ka.Register("market_poll", marketSvc.CacheDuration(), marketSvc.PollOnce)
 	ka.Start()
 	defer ka.Stop()
 
-	// 优雅退出
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
-	// 从配置文件读取端口启动服务器（支持 HTTP / HTTPS）
 	addr := ":" + global.Config.Server.Port
 	fmt.Printf("Starting server on %s\n", addr)
 

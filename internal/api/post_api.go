@@ -11,10 +11,15 @@ import (
 	"blog.alphazer01214.top/internal/global"
 	"blog.alphazer01214.top/internal/request"
 	"blog.alphazer01214.top/internal/response"
+	"blog.alphazer01214.top/internal/service"
 	"github.com/gin-gonic/gin"
 )
 
-type PostApi struct{}
+type PostApi struct {
+	postService *service.PostService
+	aiService   *service.AIService
+	userService *service.UserService
+}
 
 func (pa *PostApi) Create(c *gin.Context) {
 	var req request.PostCreateRequest
@@ -42,7 +47,7 @@ func (pa *PostApi) Create(c *gin.Context) {
 		ForbidComment: req.ForbidComment,
 		ForbidShare:   req.ForbidShare,
 	}
-	r, err := postService.Create(post)
+	r, err := pa.postService.Create(c.Request.Context(), post)
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
@@ -77,7 +82,7 @@ func (pa *PostApi) QueryOneById(c *gin.Context) {
 		response.ErrorWithMsg(c, "invalid id")
 		return
 	}
-	post, err := postService.GetPostByPostId(uint(id), viewerId)
+	post, err := pa.postService.GetPostById(c.Request.Context(), uint(id), viewerId)
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
@@ -99,7 +104,7 @@ func (pa *PostApi) QueryAll(c *gin.Context) {
 
 	//fmt.Printf("current viewer id: %v", viewerId)
 
-	postList, err := postService.GetAllPosts(page, pageSize, viewerId)
+	postList, err := pa.postService.ListPosts(c.Request.Context(), page, pageSize, viewerId)
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
@@ -129,7 +134,7 @@ func (pa *PostApi) SearchPost(c *gin.Context) {
 
 	page, pageSize := parsePagination(c)
 
-	list, err := postService.SearchPost(&req, page, pageSize, viewerId)
+	list, err := pa.postService.SearchPosts(c.Request.Context(), req.Keyword, page, pageSize, viewerId)
 	if err != nil {
 		response.ErrorWithMsg(c, "query failed")
 		return
@@ -151,7 +156,7 @@ func (pa *PostApi) ListPostsByUserId(c *gin.Context) {
 		return
 	}
 	page, pageSize := parsePagination(c)
-	postList, err := postService.GetPostsByUserId(uint(userId), page, pageSize)
+	postList, err := pa.postService.ListPostsByUserId(c.Request.Context(), uint(userId), page, pageSize, GetUserId(c))
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
@@ -170,7 +175,7 @@ func (pa *PostApi) Delete(c *gin.Context) {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
-	post, err := postService.GetPostEntityById(uint(id))
+	post, err := pa.postService.GetPostById(c.Request.Context(), uint(id), cl.UserId)
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
@@ -179,7 +184,7 @@ func (pa *PostApi) Delete(c *gin.Context) {
 		response.ErrorWithMsg(c, "you can't delete others' post")
 		return
 	}
-	if err := postService.DeleteById(uint(id)); err != nil {
+	if err := pa.postService.DeletePostById(c.Request.Context(), uint(id)); err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
@@ -199,7 +204,7 @@ func (pa *PostApi) Like(c *gin.Context) {
 		return
 	}
 
-	if err := postService.Like(req.PostId, cl.UserId); err != nil {
+	if err := pa.postService.ToggleLike(c.Request.Context(), req.PostId, cl.UserId); err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
@@ -220,7 +225,7 @@ func (pa *PostApi) Dislike(c *gin.Context) {
 		return
 	}
 
-	if err := postService.Dislike(req.PostId, cl.UserId); err != nil {
+	if err := pa.postService.ToggleDislike(c.Request.Context(), req.PostId, cl.UserId); err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
@@ -241,7 +246,7 @@ func (pa *PostApi) Favorite(c *gin.Context) {
 		return
 	}
 
-	if err := postService.Favorite(req.PostId, cl.UserId); err != nil {
+	if err := pa.postService.ToggleFavorite(c.Request.Context(), req.PostId, cl.UserId); err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
@@ -262,7 +267,7 @@ func (pa *PostApi) Share(c *gin.Context) {
 		return
 	}
 
-	if err := postService.Share(req.PostId, cl.UserId, entity.ShareInfo{
+	if err := pa.postService.Share(c.Request.Context(), req.PostId, cl.UserId, entity.ShareInfo{
 		ShareTo:      req.ShareTo,
 		ShareMessage: req.ShareMessage,
 	}); err != nil {
@@ -285,7 +290,7 @@ func (pa *PostApi) Update(c *gin.Context) {
 		return
 	}
 	userId := cl.UserId
-	post, err := postService.GetPostEntityById(req.Id)
+	post, err := pa.postService.GetPostById(c.Request.Context(), req.Id, userId)
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
@@ -295,11 +300,11 @@ func (pa *PostApi) Update(c *gin.Context) {
 		return
 	}
 
-	if err := postService.Update(req.Id, req); err != nil {
+	if err := pa.postService.UpdatePost(c.Request.Context(), req.Id, req); err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
-	updated, err := postService.GetPostByPostId(req.Id, userId)
+	updated, err := pa.postService.GetPostById(c.Request.Context(), req.Id, userId)
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
@@ -323,7 +328,7 @@ func (pa *PostApi) Ask(c *gin.Context) {
 		return
 	}
 
-	post, err := postService.GetPostEntityById(req.PostId)
+	post, err := pa.postService.GetPostById(c.Request.Context(), req.PostId, userId)
 	if err != nil {
 		response.ErrorWithMsg(c, "post not found")
 		return
@@ -381,7 +386,7 @@ func (pa *PostApi) Ask(c *gin.Context) {
 		Prompt:  userPrompt,
 	}
 
-	if err := aiService.TmpToolCallingStreamChat(ctx, userId, chatId, tmpReq, pushStream); err != nil {
+	if err := pa.aiService.TmpToolCallingStreamChat(ctx, userId, chatId, tmpReq, pushStream); err != nil {
 		resp := map[string]interface{}{
 			"chat_id": chatId,
 			"content": "",

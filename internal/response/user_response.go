@@ -46,6 +46,10 @@ type FollowStatus struct {
 	TargetUser  UserInfo `json:"target_user"`
 }
 
+type UserList struct {
+	Items []UserInfo `json:"items"`
+}
+
 type FollowList struct {
 	Items    []UserInfo `json:"items"`
 	Page     int        `json:"page"`

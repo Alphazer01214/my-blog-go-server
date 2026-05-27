@@ -1,68 +1,64 @@
-# 行情 API
+# Market API
 
-市场指数实时/历史数据。
-
-## 目录
-
-| 端点 | 方法 | 说明 | 是否需要登录 |
-|------|------|------|------------|
-| `/api/market/indices` | GET | 获取所有指数最新数据 | 否 |
-| `/api/market/indices/history` | GET | 获取指定指数历史数据 | 否 |
+| Method | Endpoint           | Description            |
+| ------ | ------------------ | ---------------------- |
+| GET    | /api/market        | Get market overview    |
+| GET    | /api/market/history| Get market history     |
 
 ---
 
-## 端点详情
+## GET /api/market
 
-### GET /api/market/indices
+Get current market overview data.
 
-获取所有市场指数的最新行情。
-
-**Response**：
+**Response:**
 
 ```json
 {
-  "data": [
-    {
-      "index_name": "A股大盘",
-      "short_name": "A股",
-      "current_value": 3200.50,
-      "change_value": 15.20,
-      "change_percent": 0.48,
-      "is_up": true,
-      "type": "stock"
-    }
-  ]
+  "code": 0,
+  "data": {
+    "markets": [
+      {
+        "symbol": "BTC/USDT",
+        "price": 65000.00,
+        "change": 2.5,
+        "volume": 1234567890
+      }
+    ]
+  },
+  "msg": "success"
 }
 ```
 
-- `is_up`：`true`=上涨，`false`=下跌
-- `type`：指数类型标识
+---
 
-### GET /api/market/indices/history
+## GET /api/market/history
 
-获取指定指数在时间范围内的历史数据。
+Get historical market data within a time range.
 
-**Query 参数**：
+**Query Parameters:**
+- `from` (string, required) - Start time (ISO 8601 or timestamp)
+- `to` (string, required) - End time (ISO 8601 or timestamp)
 
-| 参数 | 类型 | 必填 | 默认 | 说明 |
-|------|------|------|------|------|
-| `index_name` | string | 是 | | 指数名称 |
-| `from` | int | 是 | | 起始时间戳（毫秒） |
-| `to` | int | 是 | | 结束时间戳（毫秒） |
+**Example:** `GET /api/market/history?from=2026-01-01&to=2026-01-31`
 
-**Response**：
+**Response:**
 
 ```json
 {
-  "data": [
-    {
-      "index_name": "A股大盘",
-      "value": 3185.30,
-      "change_value": 0.48,
-      "change_percent": 0.48,
-      "timestamp": 1716624000000,
-      "time": "2024-05-25 16:00:00"
-    }
-  ]
+  "code": 0,
+  "data": {
+    "history": [
+      {
+        "timestamp": "2026-01-01T00:00:00Z",
+        "open": 64000.00,
+        "high": 65500.00,
+        "low": 63500.00,
+        "close": 65000.00,
+        "volume": 987654321
+      }
+    ]
+  },
+  "msg": "success"
 }
 ```

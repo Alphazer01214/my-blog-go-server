@@ -13,6 +13,7 @@ import (
 	tomori_tool "blog.alphazer01214.top/internal/agent/tool"
 	"blog.alphazer01214.top/internal/entity"
 	"blog.alphazer01214.top/internal/global"
+	"blog.alphazer01214.top/internal/repository"
 	"blog.alphazer01214.top/internal/request"
 	"blog.alphazer01214.top/internal/response"
 	"github.com/cloudwego/eino-ext/components/model/ollama"
@@ -27,17 +28,22 @@ import (
 
 type AIService struct {
 	saveMu sync.Map // map[string]*sync.Mutex, keyed by chatId
+	aiRepo repository.AIRepository
+}
+
+func NewAIService(aiRepo repository.AIRepository) *AIService {
+	return &AIService{aiRepo: aiRepo}
 }
 
 func (ai *AIService) CreateAgent(ctx context.Context, agent *entity.Agent) (*entity.Agent, error) {
-	if err := global.GetDB().WithContext(ctx).Create(agent).Error; err != nil {
+	if err := ai.aiRepo.CreateAgent(ctx, agent); err != nil {
 		return nil, err
 	}
 	return agent, nil
 }
 
 func (ai *AIService) UpdateAgent(ctx context.Context, userId uint, agentId uint, newAgent *entity.Agent) (*entity.Agent, error) {
-	agent, err := ai.queryAgentById(ctx, agentId)
+	agent, err := ai.aiRepo.FindAgentById(ctx, agentId)
 	if err != nil {
 		return nil, err
 	}
@@ -55,7 +61,7 @@ func (ai *AIService) UpdateAgent(ctx context.Context, userId uint, agentId uint,
 	agent.Activate = newAgent.Activate
 	agent.Prompts = newAgent.Prompts
 	agent.Memories = newAgent.Memories
-	if err := global.GetDB().WithContext(ctx).Save(agent).Error; err != nil {
+	if err := ai.aiRepo.SaveAgent(ctx, agent); err != nil {
 		return nil, err
 	}
 	return agent, nil
@@ -88,16 +94,11 @@ func (ai *AIService) UpdateAgent(ctx context.Context, userId uint, agentId uint,
 //}
 
 func (ai *AIService) QueryAgentsByUser(ctx context.Context, userId uint) ([]entity.Agent, error) {
-	var agents []entity.Agent
-	if err := global.GetDB().WithContext(ctx).Where("user_id = ?", userId).Order("id desc").Find(&agents).Error; err != nil {
-		return nil, err
-	}
-
-	return agents, nil
+	return ai.aiRepo.ListAgentsByUserId(ctx, userId)
 }
 
 func (ai *AIService) QueryAgentById(ctx context.Context, userId uint, agentId uint) (*entity.Agent, error) {
-	agent, err := ai.queryAgentById(ctx, agentId)
+	agent, err := ai.aiRepo.FindAgentById(ctx, agentId)
 	if err != nil {
 		return nil, err
 	}
@@ -126,26 +127,15 @@ func (ai *AIService) GetChatHistory(ctx context.Context, userId uint, chatId str
 }
 
 func (ai *AIService) ListChatSessions(ctx context.Context, userId uint, page, pageSize int) ([]entity.ChatSession, int64, error) {
-	var sessions []entity.ChatSession
-	var total int64
-	db := global.GetDB().WithContext(ctx).Model(&entity.ChatSession{}).Where("user_id = ?", userId)
-	if err := db.Count(&total).Error; err != nil {
+	pagination, err := ai.aiRepo.ListChatSessionsByUserId(ctx, userId, page, pageSize)
+	if err != nil {
 		return nil, 0, err
 	}
-	offset := (page - 1) * pageSize
-	if err := db.Order("updated_at desc").Offset(offset).Limit(pageSize).Find(&sessions).Error; err != nil {
-		return nil, 0, err
-	}
-	return sessions, total, nil
+	return pagination.Items, pagination.Total, nil
 }
 
 func (ai *AIService) GetChatSession(ctx context.Context, userId uint, chatId string) (*entity.ChatSession, error) {
-	var chatSession entity.ChatSession
-	err := global.GetDB().WithContext(ctx).Where("uuid = ? AND user_id = ?", chatId, userId).First(&chatSession).Error
-	if err != nil {
-		return nil, err
-	}
-	return &chatSession, nil
+	return ai.aiRepo.FindChatSessionByUuidAndUserId(ctx, chatId, userId)
 }
 
 func (ai *AIService) InvokeAgent(ctx context.Context, userId uint, agentId uint, req *request.InvokeAgentRequest) (*response.StandardAiResponse, error) {
@@ -393,9 +383,17 @@ func (ai *AIService) TmpToolCallingStreamChat(ctx context.Context, userId uint, 
 	}
 
 	firstResp, err := toolCallingChatModel.Generate(ctx, toolCallingMessage)
+	//stream, err := toolCallingChatModel.Stream(ctx, toolCallingMessage)
 	if err != nil {
 		return err
 	}
+	//defer stream.Close()
+	//for {
+	//	chunk, err := stream.Recv()
+	//	if err != nil{
+	//		break
+	//	}
+	//}
 	callback(firstResp.Content)
 
 	if len(firstResp.ToolCalls) > 0 {
@@ -571,11 +569,7 @@ func (ai *AIService) isStreaming(ctx context.Context, chatId string) bool {
 }
 
 func (ai *AIService) queryAgentById(ctx context.Context, id uint) (*entity.Agent, error) {
-	var agent entity.Agent
-	if err := global.GetDB().WithContext(ctx).Where("id = ?", id).First(&agent).Error; err != nil {
-		return nil, err
-	}
-	return &agent, nil
+	return ai.aiRepo.FindAgentById(ctx, id)
 }
 
 func (ai *AIService) getEinoChatModel(ctx context.Context, agent *entity.Agent) (model.ToolCallingChatModel, error) {
@@ -648,8 +642,7 @@ func (ai *AIService) getLastKChatMessages(chat *entity.Session, k int) []entity.
 }
 
 func (ai *AIService) loadChat(ctx context.Context, userId uint, chatId string) (*entity.Session, error) {
-	var chatSession entity.ChatSession
-	err := global.GetDB().WithContext(ctx).Where("uuid = ? AND user_id = ?", chatId, userId).First(&chatSession).Error
+	chatSession, err := ai.aiRepo.FindChatSessionByUuidAndUserId(ctx, chatId, userId)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return &entity.Session{}, nil
 	}
@@ -680,8 +673,6 @@ func (ai *AIService) saveChatSession(ctx context.Context, userId uint, chatId st
 		return err
 	}
 
-	var chatSession entity.ChatSession
-	dbResult := global.GetDB().WithContext(ctx).Where("uuid = ? AND user_id = ?", chatId, userId).First(&chatSession)
 	title := ""
 	if len(session.ChatMessages) > 0 {
 		title = session.ChatMessages[0].Content
@@ -690,9 +681,10 @@ func (ai *AIService) saveChatSession(ctx context.Context, userId uint, chatId st
 		}
 	}
 
-	if errors.Is(dbResult.Error, gorm.ErrRecordNotFound) {
+	existing, err := ai.aiRepo.FindChatSessionByUuidAndUserId(ctx, chatId, userId)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		now := time.Now()
-		return global.GetDB().WithContext(ctx).Create(&entity.ChatSession{
+		return ai.aiRepo.CreateChatSession(ctx, &entity.ChatSession{
 			UUID:      chatId,
 			UserId:    userId,
 			AgentId:   session.AgentId,
@@ -700,7 +692,10 @@ func (ai *AIService) saveChatSession(ctx context.Context, userId uint, chatId st
 			Messages:  messagesJSON,
 			CreatedAt: time.Unix(session.CreateAt, 0),
 			UpdatedAt: now,
-		}).Error
+		})
+	}
+	if err != nil {
+		return err
 	}
 
 	updates := map[string]interface{}{
@@ -712,7 +707,7 @@ func (ai *AIService) saveChatSession(ctx context.Context, userId uint, chatId st
 	if session.CreateAt > 0 {
 		updates["created_at"] = time.Unix(session.CreateAt, 0)
 	}
-	return global.GetDB().WithContext(ctx).Model(&chatSession).Updates(updates).Error
+	return ai.aiRepo.UpdateChatSessionFields(ctx, existing.UUID, existing.UserId, updates)
 }
 
 func (ai *AIService) saveSessionAsync(userId uint, chatId string, session *entity.Session) {

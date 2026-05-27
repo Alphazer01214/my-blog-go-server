@@ -52,3 +52,10 @@ type AgentList struct {
 	UserId uint         `json:"user_id"`
 	Agents []*AgentInfo `json:"agents"`
 }
+
+type ChatSessionList struct {
+	Items    interface{} `json:"items"`
+	Page     int         `json:"page"`
+	PageSize int         `json:"page_size"`
+	Total    int64       `json:"total"`
+}

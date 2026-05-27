@@ -1,191 +1,381 @@
-# 视频 API
+# Video API
 
-## 目录
-
-| 端点 | 方法 | 说明 | 是否需要登录 |
-|------|------|------|------------|
-| `/api/video/init` | POST | 初始化视频上传 | 是 |
-| `/api/video/chunk` | POST | 上传视频分块（multipart） | 是 |
-| `/api/video/complete` | POST | 完成上传并合并 | 是 |
-| `/api/video/:id` | GET | 获取视频详情 | 否 |
-| `/api/video/:id` | DELETE | 删除视频 | 是 |
-| `/api/video/:id` | PUT | 更新视频信息 | 是 |
-| `/api/video/list` | GET | 获取视频列表 | 否 |
-| `/api/user/:id/videos` | GET | 获取指定用户视频列表 | 否 |
-| `/api/video/:id/interact` | POST | 点赞/收藏/分享操作 | 是 |
-| `/api/video/:id/stream` | GET | 视频流播放（HLS） | 否 |
-| `/api/video/:id/cover` | GET | 获取视频封面 | 否 |
+| Method | Endpoint                  | Description             |
+| ------ | ------------------------- | ----------------------- |
+| GET    | /api/video/:id/stream     | Stream video            |
+| GET    | /api/video/:id/cover      | Get video cover image   |
+| POST   | /api/video/init           | Init chunked upload     |
+| POST   | /api/video/chunk          | Upload video chunk      |
+| POST   | /api/video/merge          | Merge uploaded chunks   |
+| POST   | /api/video/create         | Create video            |
+| GET    | /api/video/:id            | Get video detail        |
+| GET    | /api/video                | List videos             |
+| GET    | /api/video/user/:userId   | Get user's videos       |
+| PUT    | /api/video/:id            | Update video            |
+| DELETE | /api/video/:id            | Delete video            |
+| POST   | /api/video/:id/like       | Like video              |
+| POST   | /api/video/:id/dislike    | Dislike video           |
+| POST   | /api/video/:id/favorite   | Favorite video          |
+| POST   | /api/video/:id/share      | Share video             |
 
 ---
 
-## 端点详情
+## GET /api/video/:id/stream
 
-### POST /api/video/init
+Stream video binary data. Supports range requests.
 
-初始化视频上传，返回 upload_id。
+**Path Parameters:**
+- `id` (integer) - Video ID
 
-**Request Body**：
+**Response:** Binary video stream.
+
+---
+
+## GET /api/video/:id/cover
+
+Get video cover image.
+
+**Path Parameters:**
+- `id` (integer) - Video ID
+
+**Response:** Binary image data.
+
+---
+
+## POST /api/video/init
+
+Initialize a chunked video upload session. Requires authentication.
+
+**Request Body:**
 
 ```json
 {
-  "title": "视频标题",
-  "description": "视频描述",
-  "cover_path": "封面路径（可选，先传空字符串）"
+  "upload_id": "string (required)",
+  "video_name": "string (required)",
+  "video_size": 104857600,
+  "chunk_size": 1048576,
+  "title": "string (optional)",
+  "description": "string (optional)",
+  "category": "string (optional)",
+  "tags": ["string"] (optional),
+  "public": true,
+  "forbid_comment": false,
+  "forbid_share": false,
+  "env": { "ipv4": "", "ipv6": "", "os": "", "device_info": "" }
 }
 ```
 
-**Response**：
+**Response:**
 
 ```json
 {
+  "code": 0,
   "data": {
-    "upload_id": "uuid"
-  }
+    "upload_id": "uuid-string",
+    "chunk_size": 1048576,
+    "total_chunks": 100
+  },
+  "msg": "success"
 }
 ```
 
-### POST /api/video/chunk
+---
 
-上传一个视频分块。
+## POST /api/video/chunk
 
-**Content-Type**：`multipart/form-data`
+Upload a single video chunk. Requires authentication.
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `upload_id` | string | 初始化返回的 ID |
-| `chunk` | file | 视频块文件 |
-| `index` | int | 块序号（从 0 开始） |
-| `total` | int | 总块数 |
+**Request Body:** Multipart form data with:
+- `upload_id` (string) - Upload session ID
+- `chunk_index` (integer) - Chunk index (0-based)
+- `chunk_hash` (string) - Hash of the chunk data
+- Binary chunk data in the file field
 
-**Response**：`204 No Content`
-
-### POST /api/video/complete
-
-通知服务端所有块已上传，开始转码处理。
-
-**Request Body**：
+**Response:**
 
 ```json
 {
-  "upload_id": "uuid"
+  "code": 0,
+  "data": {},
+  "msg": "chunk uploaded"
 }
 ```
 
-**Response**：
+---
+
+## POST /api/video/merge
+
+Merge all uploaded chunks into a final video. Requires authentication.
+
+**Request Body:**
 
 ```json
 {
+  "upload_id": "string"
+}
+```
+
+**Response:**
+
+```json
+{
+  "code": 0,
+  "data": {},
+  "msg": "video merged"
+}
+```
+
+---
+
+## POST /api/video/create
+
+Create a video record without chunked upload. Requires authentication.
+
+**Request Body:**
+
+```json
+{
+  "title": "string (required)",
+  "description": "string (required)",
+  "category": "string (optional)",
+  "tags": ["string"] (optional),
+  "public": true,
+  "forbid_comment": false,
+  "forbid_share": false,
+  "env": { "ipv4": "", "ipv6": "", "os": "", "device_info": "" }
+}
+```
+
+**Response:**
+
+```json
+{
+  "code": 0,
   "data": {
     "id": 1,
-    "upload_status": "processing"
-  }
-}
-```
-
-- 上传状态将变为 `processing`，服务端会异步转码
-
-### GET /api/video/:id
-
-获取视频详情。
-
-**Response**：
-
-```json
-{
-  "data": {
-    "id": 1,
-    "title": "标题",
-    "description": "描述",
-    "cover_path": "/uploads/covers/xxx.png",
-    "play_url": "/api/video/1/stream",
-    "video_path": "/uploads/videos/xxx.mp4",
-    "duration": 120.5,
-    "status": "completed",
-    "like_count": 10,
-    "favorite_count": 5,
-    "share_count": 1,
-    "comment_count": 3,
-    "view_count": 100,
+    "created_at": "2026-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "title": "Trading Tutorial",
+    "description": "Learn basics",
+    "video_src_url": "https://example.com/video.mp4",
+    "video_cover_url": "",
+    "duration": 300,
+    "size": 104857600,
+    "mime_type": "video/mp4",
+    "user_id": 1,
+    "author": { "...UserInfo..." },
+    "category": "tutorial",
+    "tags": ["beginner"],
+    "view_count": 0,
+    "like_count": 0,
+    "dislike_count": 0,
+    "comment_count": 0,
+    "favorite_count": 0,
+    "share_count": 0,
+    "public": true,
+    "forbid_comment": false,
+    "forbid_share": false,
+    "status": "ready",
     "is_liked": false,
-    "is_favorited": false,
-    "is_owner": false,
-    "upload_status": "completed",
-    "user_info": {
-      "id": 1,
-      "username": "作者",
-      "avatar_path": ""
-    },
-    "created_at": "2024-01-01T00:00:00Z",
-    "updated_at": "2024-01-01T00:00:00Z"
-  }
+    "is_disliked": false,
+    "is_favorited": false
+  },
+  "msg": "success"
 }
 ```
 
-### DELETE /api/video/:id
+---
 
-删除视频。仅作者和管理员可操作。
+## GET /api/video/:id
 
-### PUT /api/video/:id
+Get video detail by ID.
 
-更新视频信息。仅作者可操作。
+**Path Parameters:**
+- `id` (integer) - Video ID
 
-**Request Body**（全部可选）：
+**Response:** Same as `POST /api/video/create` response data.
+
+---
+
+## GET /api/video
+
+List videos with pagination.
+
+**Query Parameters:**
+- `page` (integer, default: 1) - Page number
+- `page_size` (integer, default: 10) - Items per page
+
+**Response:**
 
 ```json
 {
-  "title": "新标题",
-  "description": "新描述",
-  "cover_path": "新封面路径"
+  "code": 0,
+  "data": [
+    { "...VideoDetail..." }
+  ],
+  "msg": "success"
 }
 ```
 
-### GET /api/video/list
+---
 
-获取视频列表。
+## GET /api/video/user/:userId
 
-**Query 参数**：
+Get videos uploaded by a specific user.
 
-| 参数 | 类型 | 必填 | 默认 | 说明 |
-|------|------|------|------|------|
-| `page` | int | 否 | 1 | |
-| `page_size` | int | 否 | 20 | |
+**Path Parameters:**
+- `userId` (integer) - User ID
 
-### GET /api/user/:id/videos
+**Query Parameters:**
+- `page` (integer, default: 1) - Page number
+- `page_size` (integer, default: 10) - Items per page
 
-获取指定用户的视频列表。支持分页。
-
-**Response**：同 `/api/video/list`。
-
-### POST /api/video/:id/interact
-
-交互操作（同帖子）。
-
-**Request Body**：
+**Response:**
 
 ```json
 {
-  "action_type": "like"
+  "code": 0,
+  "data": [
+    { "...VideoDetail..." }
+  ],
+  "msg": "success"
 }
 ```
 
-| `action_type` | 说明 |
-|---------------|------|
-| `like` | 点赞（toggle） |
-| `favorite` | 收藏（toggle） |
-| `share` | 分享（计数+1） |
+---
 
-### GET /api/video/:id/stream
+## PUT /api/video/:id
 
-视频流播放。返回视频文件的二进制流。
+Update a video. Requires authentication (must be owner).
 
-**没有 JWT 中间件保护**（公开访问）。
+**Path Parameters:**
+- `id` (integer) - Video ID
 
-**Response**：`video/mp4` 或 `application/x-mpegURL` 等。
+**Request Body:**
 
-### GET /api/video/:id/cover
+```json
+{
+  "title": "string (optional)",
+  "description": "string (optional)",
+  "video_cover_url": "string (optional)",
+  "category": "string (optional)",
+  "tags": ["string"] (optional),
+  "public": true,
+  "forbid_comment": false,
+  "forbid_share": false
+}
+```
 
-获取视频封面图片。
+**Response:**
 
-**没有 JWT 中间件保护**（公开访问）。
+```json
+{
+  "code": 0,
+  "data": {},
+  "msg": "video updated"
+}
+```
 
-**Response**：图片二进制流。
+---
+
+## DELETE /api/video/:id
+
+Delete a video. Requires authentication (must be owner or admin).
+
+**Path Parameters:**
+- `id` (integer) - Video ID
+
+**Response:**
+
+```json
+{
+  "code": 0,
+  "data": {},
+  "msg": "deleted"
+}
+```
+
+---
+
+## POST /api/video/:id/like
+
+Like a video. Requires authentication.
+
+**Path Parameters:**
+- `id` (integer) - Video ID
+
+**Response:**
+
+```json
+{
+  "code": 0,
+  "data": {},
+  "msg": "liked"
+}
+```
+
+---
+
+## POST /api/video/:id/dislike
+
+Dislike a video. Requires authentication.
+
+**Path Parameters:**
+- `id` (integer) - Video ID
+
+**Response:**
+
+```json
+{
+  "code": 0,
+  "data": {},
+  "msg": "disliked"
+}
+```
+
+---
+
+## POST /api/video/:id/favorite
+
+Favorite a video. Requires authentication.
+
+**Path Parameters:**
+- `id` (integer) - Video ID
+
+**Response:**
+
+```json
+{
+  "code": 0,
+  "data": {},
+  "msg": "favorited"
+}
+```
+
+---
+
+## POST /api/video/:id/share
+
+Share a video. Requires authentication.
+
+**Path Parameters:**
+- `id` (integer) - Video ID
+
+**Request Body:**
+
+```json
+{
+  "share_to": "string (optional)",
+  "share_message": "string (optional)"
+}
+```
+
+**Response:**
+
+```json
+{
+  "code": 0,
+  "data": {},
+  "msg": "shared"
+}
+```
