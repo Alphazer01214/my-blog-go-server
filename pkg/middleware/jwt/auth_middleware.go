@@ -1,10 +1,10 @@
-package middleware
+package jwt
 
 import (
 	"errors"
 	"fmt"
-	"strconv"
 
+	"blog.alphazer01214.top/internal/global"
 	"blog.alphazer01214.top/internal/request"
 	"blog.alphazer01214.top/internal/response"
 	"blog.alphazer01214.top/internal/service"
@@ -65,8 +65,7 @@ func JWTAuthMiddleware() gin.HandlerFunc {
 					c.Abort()
 					return
 				}
-				c.Header("access-token", accessToken)
-				c.Header("access-expire-at", strconv.FormatInt(accessClaims.ExpiresAt.Unix(), 10))
+				utils.SetAccessTokenCookie(c, accessToken, global.GetConfig().JWT.AccessTokenExpireTime)
 
 				c.Set("claims", accessClaims)
 				c.Set("user_id", accessClaims.UserId)

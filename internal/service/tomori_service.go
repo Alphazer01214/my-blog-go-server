@@ -66,7 +66,7 @@ func (ts *TomoriService) BanUser(userId uint, banned bool) error {
 }
 
 // SetRole 修改用户角色
-func (ts *TomoriService) SetRole(userId uint, role int) error {
+func (ts *TomoriService) SetRole(userId uint, role entity.RoleType) error {
 	result := global.GetDB().Model(&entity.User{}).Where("id = ?", userId).Update("role", role)
 	if result.RowsAffected == 0 {
 		return errors.New("user not found")

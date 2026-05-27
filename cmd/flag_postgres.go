@@ -17,7 +17,7 @@ func MigrateDB() error {
 	log.Println("migrate db")
 	return db.AutoMigrate(
 		&entity.User{}, &entity.UserProfile{}, &entity.UserSetting{}, &entity.UserFollow{},
-		&entity.Post{}, &entity.Comment{}, &entity.Tag{}, &entity.Category{},
+		&entity.Post{}, &entity.Comment{}, &entity.Tag{},
 		&entity.Action{},
 		&entity.TokenBlacklist{}, &entity.Agent{}, &entity.ChatSession{},
 		&entity.Video{},

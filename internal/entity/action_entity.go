@@ -46,8 +46,8 @@ type Action struct {
 	UserId   uint `gorm:"primaryKey" json:"user_id"`
 	TargetId uint `gorm:"primaryKey" json:"target_id"`
 
-	ActType constant.ActionType `gorm:"primaryKey;column:action_type" json:"action_type"`
-	TgtType constant.TargetType `gorm:"primaryKey;column:target_type" json:"target_type"` // ActionFavorite 限定只能收藏 post
+	ActType constant.ActionType `gorm:"primaryKey;column:action_type;type:varchar(20)" json:"action_type"`
+	TgtType constant.TargetType `gorm:"primaryKey;column:target_type;type:varchar(20)" json:"target_type"` // ActionFavorite 限定只能收藏 post
 
 	ExtraInfo datatypes.JSON `json:"extra_info"`
 	CreatedAt time.Time      `json:"created_at"`

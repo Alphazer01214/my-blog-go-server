@@ -1,5 +1,7 @@
 package request
 
+import "blog.alphazer01214.top/internal/entity"
+
 type TomoriBanRequest struct {
 	UserId uint `json:"user_id" binding:"required"`
 	Banned bool `json:"banned"`
@@ -7,7 +9,7 @@ type TomoriBanRequest struct {
 
 type TomoriRoleRequest struct {
 	UserId uint            `json:"user_id" binding:"required"`
-	Role   int             `json:"role" binding:"required"`
+	Role   entity.RoleType `json:"role" binding:"required"`
 }
 
 type TomoriResetPasswordRequest struct {

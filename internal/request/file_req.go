@@ -22,7 +22,3 @@ type FileListRequest struct {
 	Page     int `form:"page"`
 	PageSize int `form:"page_size"`
 }
-
-type FileActionRequest struct {
-	FileId uint `json:"file_id" binding:"required"`
-}

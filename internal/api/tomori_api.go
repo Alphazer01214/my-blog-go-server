@@ -22,7 +22,7 @@ func authorizeTomori(c *gin.Context) (request.AccessClaims, error) {
 	if err != nil {
 		return cl, err
 	}
-	if cl.RoleType < entity.RoleTakamatsuTomori {
+	if cl.RoleType != entity.RoleTakamatsuTomori {
 		return cl, errors.New("tomori access only")
 	}
 	return cl, nil

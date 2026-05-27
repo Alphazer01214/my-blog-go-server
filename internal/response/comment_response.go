@@ -2,6 +2,8 @@ package response
 
 import (
 	"time"
+
+	"blog.alphazer01214.top/internal/entity"
 )
 
 type CommentList struct {
@@ -14,14 +16,16 @@ type CommentList struct {
 // Comment 用于 response 的评论结构体，存在一个递归嵌套，放所有 root id 或 parent id 是该评论的评论
 // 是一个树状结构
 type Comment struct {
-	CommentId       uint      `json:"comment_id"`
-	UserId          uint      `json:"user_id"`
-	PostId          uint      `json:"post_id"`
-	RootCommentId   uint      `json:"root_comment_id"`
-	ParentCommentId uint      `json:"parent_comment_id"`
-	Content         string    `json:"content"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	CommentId       uint           `json:"comment_id"`
+	UserId          uint           `json:"user_id"`
+	TargetId        uint           `json:"target_id"`
+	TargetType      string         `json:"target_type"`
+	RootCommentId   uint           `json:"root_comment_id"`
+	ParentCommentId uint           `json:"parent_comment_id"`
+	Content         string         `json:"content"`
+	CreatedAt       time.Time      `json:"created_at"`
+	UpdatedAt       time.Time      `json:"updated_at"`
+	Env             entity.EnvInfo `json:"env"`
 
 	Author UserInfo `json:"author,omitempty"`
 

@@ -3,6 +3,7 @@ package response
 import (
 	"time"
 
+	"blog.alphazer01214.top/internal/entity"
 	"gorm.io/datatypes"
 )
 
@@ -15,8 +16,7 @@ type PostDetail struct {
 	UserId        uint           `json:"user_id"`
 	Author        UserInfo       `json:"author,omitempty"`
 	Tags          datatypes.JSON `json:"tags"`
-	CategoryId    uint           `json:"category_id"`
-	CategoryName  string         `json:"category_name"`
+	Category      string         `json:"category"`
 	Keywords      datatypes.JSON `json:"keywords"`
 	Content       string         `json:"content"`
 	ViewCount     int            `json:"view_count"`
@@ -33,6 +33,8 @@ type PostDetail struct {
 	IsLiked     bool `json:"is_liked"`
 	IsDisliked  bool `json:"is_disliked"`
 	IsFavorited bool `json:"is_favorited"`
+
+	Env entity.EnvInfo `json:"env"`
 }
 
 type PostList struct {

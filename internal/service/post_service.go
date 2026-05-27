@@ -70,6 +70,46 @@ func (ps *PostService) GetAllPosts(page, pageSize int, viewerId uint) (response.
 	}, nil
 }
 
+func (ps *PostService) SearchPost(req *request.PostSearchRequest, page, pageSize int, viewerId uint) (response.PostList, error) {
+	var entities []entity.Post
+	var total int64
+	qKeyword := "%" + req.Keyword + "%"
+	//qTag := "%" + req.Tag + "%"
+
+	//db := global.GetDB().Model(&entity.Post{}).Where(
+	//	"(title ILIKE ? OR content ILIKE ?) OR array_to_string(tags, ' ') ILIKE ? OR keywords::text ILIKE ?",
+	//	qKeyword, qKeyword, qTag, qKeyword,
+	//)
+
+	db := global.GetDB().Model(&entity.Post{}).Where("title ILIKE ? OR content ILIKE ?", qKeyword, qKeyword)
+
+	if err := db.Count(&total).Error; err != nil {
+		return response.PostList{}, err
+	}
+
+	offset := (page - 1) * pageSize
+	if err := db.Order("created_at desc").Offset(offset).Limit(pageSize).Find(&entities).Error; err != nil {
+		return response.PostList{}, err
+	}
+
+	items := make([]response.PostDetail, 0, len(entities))
+	for _, et := range entities {
+		userinfo, err := Service.UserService.GetUserInfoById(et.UserId, viewerId)
+		if err != nil {
+			continue
+		}
+		pd := ps.toPostDetail(&et, &userinfo, viewerId)
+		items = append(items, *pd)
+	}
+
+	return response.PostList{
+		Items:    items,
+		Page:     page,
+		PageSize: pageSize,
+		Total:    total,
+	}, nil
+}
+
 func (ps *PostService) DeleteById(id uint) error {
 	post, err := ps.getPostEntityById(id)
 	if err != nil {
@@ -89,13 +129,14 @@ func (ps *PostService) Update(id uint, req request.PostUpdateRequest) error {
 
 	dbPost.Title = req.Title
 	dbPost.Cover = req.Cover
-	dbPost.CategoryId = req.CategoryId
+	dbPost.Category = req.Category
 	dbPost.Tags = req.Tags
 	dbPost.Keywords = req.Keywords
 	dbPost.Content = req.Content
 	dbPost.Public = req.Public
 	dbPost.ForbidComment = req.ForbidComment
 	dbPost.ForbidShare = req.ForbidShare
+	dbPost.EnvInfo = req.Env
 
 	return global.GetDB().Save(dbPost).Error
 }
@@ -257,6 +298,10 @@ func (ps *PostService) getPostEntityById(id uint) (*entity.Post, error) {
 	return &post, err
 }
 
+func (ps *PostService) GetPostEntityById(id uint) (*entity.Post, error) {
+	return ps.getPostEntityById(id)
+}
+
 func (ps *PostService) visit(postId uint, viewerId uint) {
 	global.GetDB().Model(&entity.Post{}).Where("id = ?", postId).
 		Update("view_count", gorm.Expr("view_count + 1"))
@@ -269,14 +314,6 @@ func (ps *PostService) isForbidComment(postId uint, viewerId uint) bool {
 }
 
 func (ps *PostService) toPostDetail(post *entity.Post, author *response.UserInfo, viewerId uint) *response.PostDetail {
-	var categoryName string
-	if post.CategoryId != 0 {
-		var cat entity.Category
-		if err := global.GetDB().Where("id = ?", post.CategoryId).First(&cat).Error; err == nil {
-			categoryName = cat.Name
-		}
-	}
-
 	pd := &response.PostDetail{
 		ID:            post.ID,
 		CreatedAt:     post.CreatedAt,
@@ -285,8 +322,7 @@ func (ps *PostService) toPostDetail(post *entity.Post, author *response.UserInfo
 		Cover:         post.Cover,
 		UserId:        post.UserId,
 		Tags:          post.Tags,
-		CategoryId:    post.CategoryId,
-		CategoryName:  categoryName,
+		Category:      post.Category,
 		Keywords:      post.Keywords,
 		Content:       post.Content,
 		ViewCount:     post.ViewCount,
@@ -295,7 +331,11 @@ func (ps *PostService) toPostDetail(post *entity.Post, author *response.UserInfo
 		DislikeCount:  post.DislikeCount,
 		FavoriteCount: post.FavoriteCount,
 		ShareCount:    post.ShareCount,
+		Env:           post.EnvInfo,
+
 		Public:        post.Public,
+		ForbidComment: post.ForbidComment,
+		ForbidShare:   post.ForbidShare,
 	}
 	if author != nil {
 		pd.Author = *author

@@ -29,6 +29,7 @@ type Agent struct {
 	Temperature float64 `json:"temperature"`
 	Thinking    bool    `json:"thinking"`
 
+	// Tool calling
 	Tools datatypes.JSONMap `json:"tools"`
 
 	// User personalize
@@ -61,13 +62,30 @@ type ChatSession struct {
 }
 
 type ChatMessage struct {
-	// Role: user or model
+	// Role: "user" | "assistant
 	Role     string `json:"role"`
 	Content  string `json:"content"`
 	IsDone   bool   `json:"is_done"`
 	IsError  bool   `json:"is_error"`
-	ErrorMsg string `json:"error_msg"`
+	UseTool  bool   `json:"use_tool"`
+	ErrorMsg string `json:"error_msg,omitempty"`
 	Time     int64  `json:"time"`
+
+	// Tool calling
+	ToolCallId string     `json:"tool_call_id,omitempty"`
+	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
+}
+
+type ToolCall struct {
+	Id        string `json:"id"`
+	Name      string `json:"name"`
+	Arguments string `json:"arguments"`
+
+	// 执行状态
+	Status    string `json:"status,omitempty"`     // pending / success / error
+	Result    string `json:"result,omitempty"`     // 工具返回结果 (JSON)
+	StartedAt int64  `json:"started_at,omitempty"` // unix timestamp
+	EndedAt   int64  `json:"ended_at,omitempty"`   // unix timestamp
 }
 
 //type StreamChatChunk struct {

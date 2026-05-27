@@ -1,4 +1,4 @@
-@baseUrl = http://localhost:2333
+@baseUrl = https://localhost:2333
 
 ### login
 POST {{baseUrl}}/api/auth/login

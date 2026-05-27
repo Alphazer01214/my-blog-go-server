@@ -3,7 +3,7 @@ package utils
 import (
 	"context"
 	"errors"
-	"net"
+	"net/http"
 	"strconv"
 	"time"
 
@@ -71,39 +71,19 @@ func GenerateRefreshTokenFromClaims(claims request.RefreshClaims) (string, error
 }
 
 func SetRefreshTokenCookie(c *gin.Context, token string, age int) {
-	host, _, err := net.SplitHostPort(c.Request.Host)
-	if err != nil {
-		host = c.Request.Host
-	}
-
-	setCookies(c, constant.CookieRefreshToken, token, age, host)
+	setCookies(c, constant.CookieRefreshToken, token, age, "")
 }
 
 func SetAccessTokenCookie(c *gin.Context, token string, age int) {
-	host, _, err := net.SplitHostPort(c.Request.Host)
-	if err != nil {
-		host = c.Request.Host
-	}
-
-	setCookies(c, constant.CookieAccessToken, token, age, host)
+	setCookies(c, constant.CookieAccessToken, token, age, "")
 }
 
 func RemoveRefreshTokenCookie(c *gin.Context) {
-	host, _, err := net.SplitHostPort(c.Request.Host)
-	if err != nil {
-		host = c.Request.Host
-	}
-
-	setCookies(c, constant.CookieRefreshToken, "", -1, host)
+	setCookies(c, constant.CookieRefreshToken, "", -1, "")
 }
 
 func RemoveAccessTokenCookie(c *gin.Context) {
-	host, _, err := net.SplitHostPort(c.Request.Host)
-	if err != nil {
-		host = c.Request.Host
-	}
-
-	setCookies(c, constant.CookieAccessToken, "", -1, host)
+	setCookies(c, constant.CookieAccessToken, "", -1, "")
 }
 
 func GetRefreshTokenCookie(c *gin.Context) string {
@@ -176,11 +156,24 @@ func ParseRefreshToken(token string) (request.RefreshClaims, error) {
 }
 
 func setCookies(c *gin.Context, name string, value string, age int, host string) {
-	if net.ParseIP(host) == nil {
-		c.SetCookie(name, value, age, "/", "", false, true)
-	} else {
-		c.SetCookie(name, value, age, "/", host, false, false)
+	// 检测当前请求是否为 HTTPS
+	isSecure := c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https"
+
+	sameSite := http.SameSiteLaxMode
+	if isSecure {
+		sameSite = http.SameSiteNoneMode
 	}
+	cookie := &http.Cookie{
+		Name:     name,
+		Value:    value,
+		Path:     "/",
+		Domain:   "",
+		MaxAge:   age,
+		Secure:   isSecure,
+		HttpOnly: true,
+		SameSite: sameSite,
+	}
+	c.Header("Set-Cookie", cookie.String())
 }
 
 func parseToken(input string, claims jwt.Claims, secret interface{}) (interface{}, error) {

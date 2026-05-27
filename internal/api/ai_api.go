@@ -195,7 +195,7 @@ func (ap *AiApi) GetChatSession(c *gin.Context) {
 //	ctx := context.Background()
 //
 //	// 检查 Redis 中是否有未完成的流式内容
-//	redisMsg, exists := aiService.GetChatFromRedis(ctx, chatId)
+//	redisMsg, exists := aiService.getChatFromRedis(ctx, chatId)
 //	if !exists || redisMsg == nil {
 //		response.ErrorWithMsg(c, "no streaming session found in redis")
 //		return

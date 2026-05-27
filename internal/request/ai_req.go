@@ -48,4 +48,19 @@ type TmpChatRequest struct {
 	Provider string `json:"provider"`
 	BaseUrl  string `json:"base_url"`
 	ApiKey   string `json:"api_key"`
+	Model    string `json:"model"`
+
+	Prompt string `json:"prompt"`
+}
+
+type PostAskRequest struct {
+	ChatId       string `json:"chat_id"`       // 前端生成的 UUID，追问时传相同值以延续会话
+	PostId       uint   `json:"post_id" binding:"required"`
+	Prompt       string `json:"prompt"`
+	SelectedText string `json:"selected_text"`
+	Mode         string `json:"mode"` // "summarize" | "ask" | "selected"
+
+	BaseUrl string `json:"base_url"`
+	ApiKey  string `json:"api_key"`
+	Model   string `json:"model"`
 }

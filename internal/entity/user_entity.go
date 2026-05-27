@@ -6,15 +6,15 @@ import (
 	"gorm.io/gorm"
 )
 
-type RoleType int
+type RoleType string
 
 const (
-	RoleEvil RoleType = iota
-	RoleGuest
-	RoleNormalUser
-	RoleVIP
-	RoleModerator
-	RoleTakamatsuTomori
+	RoleEvil            RoleType = "evil"
+	RoleGuest           RoleType = "guest"
+	RoleNormalUser      RoleType = "normal_user"
+	RoleVIP             RoleType = "vip"
+	RoleModerator       RoleType = "moderator"
+	RoleTakamatsuTomori RoleType = "takamatsu_tomori"
 )
 
 type User struct {

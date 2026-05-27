@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"blog.alphazer01214.top/internal/constant"
 	"blog.alphazer01214.top/internal/entity"
 	"blog.alphazer01214.top/internal/global"
 	"blog.alphazer01214.top/internal/response"
@@ -358,32 +357,6 @@ func (fs *FileService) toFileDetail(video *entity.Video) *response.FileDetail {
 		FavoriteCount: video.FavoriteCount,
 		ShareCount:   video.ShareCount,
 	}
-}
-
-func (fs *FileService) LikeFile(fileId, userId uint) error {
-	return global.GetDB().Transaction(func(tx *gorm.DB) error {
-		var existing entity.Action
-		result := tx.Where("target_id = ? AND user_id = ? AND target_type = ? AND action_type = ?",
-			fileId, userId, constant.TargetVideo, constant.ActionLike).First(&existing)
-		if result.RowsAffected > 0 {
-			if err := tx.Delete(&existing).Error; err != nil {
-				return err
-			}
-			return tx.Model(&entity.Video{}).Where("id = ?", fileId).
-				Update("like_count", gorm.Expr("GREATEST(like_count - 1, 0)")).Error
-		}
-
-		if err := tx.Create(&entity.Action{
-			UserId:   userId,
-			TargetId: fileId,
-			ActType:  constant.ActionLike,
-			TgtType:  constant.TargetVideo,
-		}).Error; err != nil {
-			return err
-		}
-		return tx.Model(&entity.Video{}).Where("id = ?", fileId).
-			Update("like_count", gorm.Expr("like_count + 1")).Error
-	})
 }
 
 func (fs *FileService) getSessionDir(uploadId string) string {

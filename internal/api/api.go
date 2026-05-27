@@ -17,6 +17,7 @@ type Apis struct {
 	MarketApi
 	FileApi
 	TomoriApi
+	VideoApi
 }
 
 var Api = new(Apis)
@@ -28,6 +29,7 @@ var (
 	aiService      = service.Service.AIService
 	marketService  = service.Service.MarketService
 	fileService    = service.Service.FileService
+	videoService   = service.Service.VideoService
 )
 
 func Authorize(c *gin.Context) (request.AccessClaims, error) {

@@ -2,7 +2,7 @@ package router
 
 import (
 	"blog.alphazer01214.top/internal/api"
-	"blog.alphazer01214.top/internal/middleware"
+	"blog.alphazer01214.top/pkg/middleware/jwt"
 	"github.com/gin-gonic/gin"
 )
 
@@ -12,7 +12,7 @@ func SetupTomoriRouter(r *gin.Engine) {
 	tomoriApi := api.Api.TomoriApi
 
 	protected := r.Group("/api/tomori")
-	protected.Use(middleware.JWTAuthMiddleware())
+	protected.Use(jwt.JWTAuthMiddleware())
 	{
 		// 统计面板
 		protected.GET("/stats", tomoriApi.GetStats)

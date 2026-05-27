@@ -17,6 +17,9 @@ func (cs *CommentService) Create(comment *entity.Comment) (*response.Comment, er
 	if comment.TargetType == constant.TargetPost && cs.isPostForbidComment(comment.TargetId) {
 		return nil, errors.New("this post is forbidden to comment")
 	}
+	if comment.TargetType == constant.TargetVideo && Service.VideoService.IsVideoForbidComment(comment.TargetId) {
+		return nil, errors.New("this video is forbidden to comment")
+	}
 	err := global.GetDB().Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(comment).Error; err != nil {
 			return err
@@ -39,8 +42,15 @@ func (cs *CommentService) Create(comment *entity.Comment) (*response.Comment, er
 			}
 		}
 
-		return tx.Model(&entity.Post{}).Where("id = ?", comment.TargetId).
-			Update("comment_count", gorm.Expr("comment_count + 1")).Error
+		if comment.TargetType == constant.TargetPost {
+			return tx.Model(&entity.Post{}).Where("id = ?", comment.TargetId).
+				Update("comment_count", gorm.Expr("comment_count + 1")).Error
+		}
+		if comment.TargetType == constant.TargetVideo {
+			return tx.Model(&entity.Video{}).Where("id = ?", comment.TargetId).
+				Update("comment_count", gorm.Expr("comment_count + 1")).Error
+		}
+		return nil
 	})
 	if err != nil {
 		return nil, err
@@ -67,8 +77,15 @@ func (cs *CommentService) Delete(commentId, userId uint) error {
 		if comment.RootCommentId == 0 {
 			res := tx.Where("root_comment_id = ?", commentId).Delete(&entity.Comment{})
 			delCnt := res.RowsAffected
-			if err := tx.Model(&entity.Post{}).Where("id = ?", comment.TargetId).Update("comment_count", gorm.Expr("GREATEST(comment_count - ?, 0)", delCnt)).Error; err != nil {
-				return err
+			if comment.TargetType == constant.TargetPost {
+				if err := tx.Model(&entity.Post{}).Where("id = ?", comment.TargetId).Update("comment_count", gorm.Expr("GREATEST(comment_count - ?, 0)", delCnt)).Error; err != nil {
+					return err
+				}
+			}
+			if comment.TargetType == constant.TargetVideo {
+				if err := tx.Model(&entity.Video{}).Where("id = ?", comment.TargetId).Update("comment_count", gorm.Expr("GREATEST(comment_count - ?, 0)", delCnt)).Error; err != nil {
+					return err
+				}
 			}
 
 			if err := tx.Delete(&entity.Comment{}, commentId).Error; err != nil {
@@ -79,8 +96,15 @@ func (cs *CommentService) Delete(commentId, userId uint) error {
 
 		res := tx.Where("parent_comment_id = ?", commentId).Delete(&entity.Comment{})
 		delCnt := res.RowsAffected
-		if err := tx.Model(&entity.Post{}).Where("id = ?", comment.TargetId).Update("comment_count", gorm.Expr("GREATEST(comment_count - ?, 0)", delCnt)).Error; err != nil {
-			return err
+		if comment.TargetType == constant.TargetPost {
+			if err := tx.Model(&entity.Post{}).Where("id = ?", comment.TargetId).Update("comment_count", gorm.Expr("GREATEST(comment_count - ?, 0)", delCnt)).Error; err != nil {
+				return err
+			}
+		}
+		if comment.TargetType == constant.TargetVideo {
+			if err := tx.Model(&entity.Video{}).Where("id = ?", comment.TargetId).Update("comment_count", gorm.Expr("GREATEST(comment_count - ?, 0)", delCnt)).Error; err != nil {
+				return err
+			}
 		}
 		if err := tx.Model(&entity.Comment{}).Where("id = ?", comment.RootCommentId).Update("reply_count", gorm.Expr("GREATEST(reply_count - ?, 0)", delCnt)).Error; err != nil {
 			return err
@@ -174,10 +198,21 @@ func (cs *CommentService) GetCommentsByPostId(postId uint, page int, pageSize in
 	if cs.isPostForbidComment(postId) {
 		return nil, 0, errors.New("this post is forbidden to comment")
 	}
+	return cs.getCommentsByTarget(constant.TargetPost, postId, page, pageSize, viewerId)
+}
+
+func (cs *CommentService) GetCommentsByVideoId(videoId uint, page int, pageSize int, viewerId uint) ([]*response.Comment, int64, error) {
+	if Service.VideoService.IsVideoForbidComment(videoId) {
+		return nil, 0, errors.New("this video is forbidden to comment")
+	}
+	return cs.getCommentsByTarget(constant.TargetVideo, videoId, page, pageSize, viewerId)
+}
+
+func (cs *CommentService) getCommentsByTarget(targetType constant.TargetType, targetId uint, page int, pageSize int, viewerId uint) ([]*response.Comment, int64, error) {
 	var roots []*entity.Comment
 	var comments []*response.Comment
 	var total int64
-	db := global.GetDB().Model(&entity.Comment{}).Where("target_id = ? AND target_type = ? AND root_comment_id = 0", postId, constant.TargetPost)
+	db := global.GetDB().Model(&entity.Comment{}).Where("target_id = ? AND target_type = ? AND root_comment_id = 0", targetId, targetType)
 	if err := db.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
@@ -318,8 +353,10 @@ func (cs *CommentService) toResponseComment(comment *entity.Comment, viewerId ui
 		LikeCount:       comment.LikeCount,
 		ReplyCount:      comment.ReplyCount,
 		ParentCommentId: comment.ParentCommentId,
-		PostId:          comment.TargetId,
+		TargetId:        comment.TargetId,
+		TargetType:      string(comment.TargetType),
 		RootCommentId:   comment.RootCommentId,
 		UpdatedAt:       comment.UpdatedAt,
+		Env:             comment.EnvInfo,
 	}
 }

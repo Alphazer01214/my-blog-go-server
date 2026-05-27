@@ -10,7 +10,7 @@ type PostCreateRequest struct {
 	Env        entity.EnvInfo `json:"env"`
 	Title      string         `json:"title"`
 	Cover      string         `json:"cover"`
-	CategoryId uint           `json:"category_id"`
+	Category   string         `json:"category"`
 	Tags       datatypes.JSON `json:"tags"`
 	Keywords   datatypes.JSON `json:"keywords"`
 	Content    string         `json:"content"`
@@ -25,7 +25,7 @@ type PostUpdateRequest struct {
 	Env        entity.EnvInfo `json:"env"`
 	Title      string         `json:"title"`
 	Cover      string         `json:"cover"`
-	CategoryId uint           `json:"category_id"`
+	Category   string         `json:"category"`
 	Tags       datatypes.JSON `json:"tags"`
 	Keywords   datatypes.JSON `json:"keywords"`
 	Content    string         `json:"content"`
@@ -43,4 +43,9 @@ type PostShareRequest struct {
 	PostId       uint   `json:"post_id" binding:"required"`
 	ShareTo      string `json:"share_to"`
 	ShareMessage string `json:"share_message"`
+}
+
+type PostSearchRequest struct {
+	Keyword string `form:"keyword"`
+	Tag     string `form:"tag"`
 }

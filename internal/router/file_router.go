@@ -2,7 +2,7 @@ package router
 
 import (
 	"blog.alphazer01214.top/internal/api"
-	"blog.alphazer01214.top/internal/middleware"
+	"blog.alphazer01214.top/pkg/middleware/jwt"
 	"github.com/gin-gonic/gin"
 )
 
@@ -19,7 +19,7 @@ func SetupFileRouter(r *gin.Engine) {
 	}
 
 	protected := r.Group("/api")
-	protected.Use(middleware.JWTAuthMiddleware())
+	protected.Use(jwt.JWTAuthMiddleware())
 	{
 		protected.POST("/upload/init", fileApi.InitUpload)
 		protected.PUT("/upload/chunk", fileApi.UploadChunk)

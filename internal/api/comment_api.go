@@ -1,7 +1,6 @@
 package api
 
 import (
-	"fmt"
 	"strconv"
 
 	"blog.alphazer01214.top/internal/constant"
@@ -26,11 +25,18 @@ func (ca *CommentApi) Create(c *gin.Context) {
 		return
 	}
 
+	targetType := constant.TargetPost
+	targetId := req.PostId
+	if req.TargetType != "" {
+		targetType = req.TargetType
+		targetId = req.TargetId
+	}
+
 	comment := &entity.Comment{
 		EnvInfo:         req.Env,
 		UserId:          cl.UserId,
-		TargetType:      constant.TargetPost,
-		TargetId:        req.PostId,
+		TargetType:      targetType,
+		TargetId:        targetId,
 		Content:         req.Content,
 		RootCommentId:   req.RootCommentId,
 		ParentCommentId: req.ParentCommentId,
@@ -53,25 +59,44 @@ func (ca *CommentApi) ListCommentsByPostId(c *gin.Context) {
 	}
 
 	page, pageSize := parsePagination(c)
-	cl, err := Authorize(c)
-	if err != nil {
-		response.ErrorWithMsg(c, err.Error())
-		return
-	}
+	viewerId := GetUserId(c)
 
-	comments, total, err := commentService.GetCommentsByPostId(uint(postId), page, pageSize, cl.UserId)
+	comments, total, err := commentService.GetCommentsByPostId(uint(postId), page, pageSize, viewerId)
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
-	msg := fmt.Sprintf("user %v: %v query success", cl.UserId, cl.Username)
 
 	response.SuccessWithDetail(c, response.CommentList{
 		Items:    comments,
 		Page:     page,
 		PageSize: pageSize,
 		Total:    total,
-	}, msg)
+	}, "query success")
+}
+
+func (ca *CommentApi) ListCommentsByVideoId(c *gin.Context) {
+	videoId, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		response.ErrorWithMsg(c, "invalid video id")
+		return
+	}
+
+	page, pageSize := parsePagination(c)
+	viewerId := GetUserId(c)
+
+	comments, total, err := commentService.GetCommentsByVideoId(uint(videoId), page, pageSize, viewerId)
+	if err != nil {
+		response.ErrorWithMsg(c, err.Error())
+		return
+	}
+
+	response.SuccessWithDetail(c, response.CommentList{
+		Items:    comments,
+		Page:     page,
+		PageSize: pageSize,
+		Total:    total,
+	}, "query success")
 }
 
 func (ca *CommentApi) ListCommentsByUserId(c *gin.Context) {

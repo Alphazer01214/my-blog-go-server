@@ -47,7 +47,6 @@ type UserSettingUpdateRequest struct {
 	PostPublic *bool `json:"post_public"`
 }
 
-//type UserQueryRequest struct {
-//	UserId      uint   `json:"id"`
-//	Keyword string `json:"keyword"`
-//}
+type UserSearchRequest struct {
+	Keyword string `json:"keyword"`
+}

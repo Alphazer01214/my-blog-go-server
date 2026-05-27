@@ -8,6 +8,7 @@ type Services struct {
 	MarketService
 	FileService
 	TomoriService
+	VideoService
 }
 
 var Service = new(Services)

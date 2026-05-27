@@ -56,6 +56,15 @@ type Market struct {
 	ApiUrl          string `yaml:"api_url" json:"api_url"`
 }
 
+// WebSearchConfig 用于配置文件解析，避免循环导入
+type WebSearchConfig struct {
+	ApiKey string `yaml:"api_key" json:"api_key"`
+}
+
+type Tools struct {
+	WebSearch WebSearchConfig `yaml:"web_search" json:"web_search"`
+}
+
 type Config struct {
 	Server   *Server   `yaml:"server" json:"server"`
 	Postgres *Postgres `yaml:"postgres" json:"postgres"`
@@ -63,6 +72,7 @@ type Config struct {
 	Redis    *Redis    `yaml:"redis" json:"redis"`
 	JWT      *JWT      `yaml:"jwt" json:"jwt"`
 	Market   *Market   `yaml:"market" json:"market"`
+	Tools    *Tools    `yaml:"tools" json:"tools"`
 }
 
 func (dc *Postgres) GetDSN() string {

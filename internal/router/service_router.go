@@ -2,16 +2,23 @@ package router
 
 import (
 	"blog.alphazer01214.top/internal/api"
-	"blog.alphazer01214.top/internal/middleware"
+	"blog.alphazer01214.top/pkg/middleware/jwt"
 	"github.com/gin-gonic/gin"
 )
 
 func SetupServiceRouter(r *gin.Engine) {
 	aiApi := api.Api.AiApi
+	marketApi := api.Api.MarketApi
+
+	public := r.Group("/api")
+	{
+		public.GET("/market", marketApi.GetIndices)
+		public.GET("/market/history", marketApi.GetHistory)
+	}
 
 	// ai api
 	protected := r.Group("/api")
-	protected.Use(middleware.JWTAuthMiddleware())
+	protected.Use(jwt.JWTAuthMiddleware())
 	{
 		protected.POST("/create_agent", aiApi.Create)
 		protected.POST("/update_agent", aiApi.Update)

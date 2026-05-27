@@ -2,7 +2,7 @@ package router
 
 import (
 	"blog.alphazer01214.top/internal/api"
-	"blog.alphazer01214.top/internal/middleware"
+	"blog.alphazer01214.top/pkg/middleware/jwt"
 	"github.com/gin-gonic/gin"
 )
 
@@ -19,7 +19,7 @@ func SetupUserRouter(r *gin.Engine) {
 		publicAuth.POST("/login", userApi.Login)
 	}
 	protectedAuth := r.Group("/api/auth")
-	protectedAuth.Use(middleware.JWTAuthMiddleware())
+	protectedAuth.Use(jwt.JWTAuthMiddleware())
 	{
 		protectedAuth.POST("/logout", userApi.Logout) // 暂时的
 	}
@@ -34,7 +34,7 @@ func SetupUserRouter(r *gin.Engine) {
 	}
 
 	protected := r.Group("/api")
-	protected.Use(middleware.JWTAuthMiddleware())
+	protected.Use(jwt.JWTAuthMiddleware())
 	{
 		protected.POST("/update_password", userApi.UpdatePassword)
 		protected.POST("/update_profile", userApi.UpdateProfile)

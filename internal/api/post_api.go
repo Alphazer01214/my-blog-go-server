@@ -1,9 +1,14 @@
 package api
 
 import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
 	"strconv"
 
 	"blog.alphazer01214.top/internal/entity"
+	"blog.alphazer01214.top/internal/global"
 	"blog.alphazer01214.top/internal/request"
 	"blog.alphazer01214.top/internal/response"
 	"github.com/gin-gonic/gin"
@@ -25,15 +30,17 @@ func (pa *PostApi) Create(c *gin.Context) {
 	}
 	userId := cl.UserId
 	post := &entity.Post{
-		EnvInfo:    req.Env,
-		UserId:     userId,
-		Title:      req.Title,
-		Cover:      req.Cover,
-		Tags:       req.Tags,
-		CategoryId: req.CategoryId,
-		Keywords:   req.Keywords,
-		Content:    req.Content,
-		Public:     req.Public,
+		EnvInfo:       req.Env,
+		UserId:        userId,
+		Title:         req.Title,
+		Cover:         req.Cover,
+		Tags:          req.Tags,
+		Category:      req.Category,
+		Keywords:      req.Keywords,
+		Content:       req.Content,
+		Public:        req.Public,
+		ForbidComment: req.ForbidComment,
+		ForbidShare:   req.ForbidShare,
 	}
 	r, err := postService.Create(post)
 	if err != nil {
@@ -105,6 +112,38 @@ func (pa *PostApi) QueryAll(c *gin.Context) {
 	}
 	response.SuccessWithDetail(c, postList, "query success")
 }
+
+func (pa *PostApi) SearchPost(c *gin.Context) {
+	cl, err := Authorize(c)
+	if err != nil {
+		response.ErrorWithMsg(c, "auth failed")
+		return
+	}
+	viewerId := cl.UserId
+
+	var req request.PostSearchRequest
+	if err := c.ShouldBindQuery(&req); err != nil {
+		response.ErrorWithMsg(c, "invalid request")
+		return
+	}
+
+	page, pageSize := parsePagination(c)
+
+	list, err := postService.SearchPost(&req, page, pageSize, viewerId)
+	if err != nil {
+		response.ErrorWithMsg(c, "query failed")
+		return
+	}
+
+	for i, item := range list.Items {
+		if !item.Public && viewerId != item.UserId {
+			list.Items[i].Content = "this is private post"
+		}
+	}
+
+	response.SuccessWithDetail(c, list, "query success")
+}
+
 func (pa *PostApi) ListPostsByUserId(c *gin.Context) {
 	userId, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
@@ -131,7 +170,7 @@ func (pa *PostApi) Delete(c *gin.Context) {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
-	post, err := postService.GetPostByPostId(uint(id), 0)
+	post, err := postService.GetPostEntityById(uint(id))
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
@@ -246,7 +285,7 @@ func (pa *PostApi) Update(c *gin.Context) {
 		return
 	}
 	userId := cl.UserId
-	post, err := postService.GetPostByPostId(req.Id, 0)
+	post, err := postService.GetPostEntityById(req.Id)
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
@@ -260,5 +299,103 @@ func (pa *PostApi) Update(c *gin.Context) {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
-	response.SuccessWithDetail(c, post, "update success")
+	updated, err := postService.GetPostByPostId(req.Id, userId)
+	if err != nil {
+		response.ErrorWithMsg(c, err.Error())
+		return
+	}
+	response.SuccessWithDetail(c, updated, "update success")
+}
+
+func (pa *PostApi) Ask(c *gin.Context) {
+	ctx := context.Background()
+
+	cl, err := Authorize(c)
+	if err != nil {
+		response.ErrorWithMsg(c, err.Error())
+		return
+	}
+	userId := cl.UserId
+
+	var req request.PostAskRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.ErrorWithMsg(c, "invalid request")
+		return
+	}
+
+	post, err := postService.GetPostEntityById(req.PostId)
+	if err != nil {
+		response.ErrorWithMsg(c, "post not found")
+		return
+	}
+
+	chatId := req.ChatId
+	if chatId == "" {
+		response.ErrorWithMsg(c, "need provide uuid")
+		return
+	}
+
+	var userPrompt string
+	switch req.Mode {
+	case "summarize":
+		userPrompt = fmt.Sprintf("请总结以下文章：\n\n标题：%s\n\n文章内容：\n%s", post.Title, post.Content)
+	case "selected":
+		userPrompt = fmt.Sprintf("基于以下文章回答用户问题：\n\n标题：%s\n\n文章内容：\n%s\n\n用户选中文本：\n%s\n\n用户问题：%s",
+			post.Title, post.Content, req.SelectedText, req.Prompt)
+	default: // "ask"
+		userPrompt = fmt.Sprintf("基于以下文章回答用户问题：\n\n标题：%s\n\n文章内容：\n%s\n\n用户问题：%s",
+			post.Title, post.Content, req.Prompt)
+	}
+
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Connection", "keep-alive")
+	c.Header("Cache-Control", "no-cache")
+
+	writeSSE := func(payload interface{}) error {
+		j, err := json.Marshal(payload)
+		if err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(c.Writer, "data: %s\n\n", j); err != nil {
+			return err
+		}
+		if flusher, ok := c.Writer.(http.Flusher); ok {
+			flusher.Flush()
+		}
+		return nil
+	}
+
+	pushStream := func(data string) error {
+		resp := map[string]interface{}{
+			"chat_id": chatId,
+			"content": data,
+			"status":  true,
+		}
+		return writeSSE(resp)
+	}
+
+	tmpReq := &request.TmpChatRequest{
+		BaseUrl: global.GetConfig().LLM.BaseUrl,
+		ApiKey:  global.GetConfig().LLM.ApiKey,
+		Model:   global.GetConfig().LLM.ModelName,
+		Prompt:  userPrompt,
+	}
+
+	if err := aiService.TmpToolCallingStreamChat(ctx, userId, chatId, tmpReq, pushStream); err != nil {
+		resp := map[string]interface{}{
+			"chat_id": chatId,
+			"content": "",
+			"status":  false,
+			"message": err.Error(),
+		}
+		_ = writeSSE(resp)
+		return
+	}
+
+	_ = writeSSE(map[string]interface{}{
+		"chat_id": chatId,
+		"content": "",
+		"status":  true,
+		"message": "done",
+	})
 }
