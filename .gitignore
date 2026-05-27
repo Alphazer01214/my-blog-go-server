@@ -2,6 +2,8 @@
 /config/
 .idea/
 .env
+upload/
+cert/
 
 main
 blog.alphazer01214.top 
