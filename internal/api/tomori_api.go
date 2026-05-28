@@ -289,18 +289,18 @@ func (ta *TomoriApi) ListChats(c *gin.Context) {
 	response.SuccessWithDetail(c, rp, "ok")
 }
 
-// DeleteChat DELETE /api/tomori/chat/:chat_id - 删除任意聊天会话
+// DeleteChat DELETE /api/tomori/chat/:session_id - 删除任意聊天会话
 func (ta *TomoriApi) DeleteChat(c *gin.Context) {
 	if _, err := authorizeTomori(c); err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
-	chatId := c.Param("chat_id")
-	if chatId == "" {
-		response.ErrorWithMsg(c, "missing chat_id")
+	sessionId := c.Param("session_id")
+	if sessionId == "" {
+		response.ErrorWithMsg(c, "missing session_id")
 		return
 	}
-	if err := ta.tomoriService.ForceDeleteChat(c.Request.Context(), chatId); err != nil {
+	if err := ta.tomoriService.ForceDeleteChat(c.Request.Context(), sessionId); err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}

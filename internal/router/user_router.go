@@ -7,7 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func SetupUserRouter(r *gin.Engine, apis *api.Apis, userService *service.UserService) {
+func SetupUserRouter(r *gin.Engine, apis *api.Apis) {
 	userApi := apis.UserApi
 	postApi := apis.PostApi
 	commentApi := apis.CommentApi
@@ -18,7 +18,7 @@ func SetupUserRouter(r *gin.Engine, apis *api.Apis, userService *service.UserSer
 		publicAuth.POST("/login", userApi.Login)
 	}
 	protectedAuth := r.Group("/api/auth")
-	protectedAuth.Use(jwt.JWTAuthMiddleware(userService))
+	protectedAuth.Use(jwt.JWTAuthMiddleware())
 	{
 		protectedAuth.POST("/logout", userApi.Logout)
 	}

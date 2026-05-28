@@ -161,9 +161,9 @@ func (ap *AiApi) ListChats(c *gin.Context) {
 }
 
 func (ap *AiApi) GetChatSession(c *gin.Context) {
-	chatId := c.Param("chat_id")
-	if chatId == "" {
-		response.ErrorWithMsg(c, "missing chat_id")
+	sessionId := c.Param("session_id")
+	if sessionId == "" {
+		response.ErrorWithMsg(c, "missing session_id")
 		return
 	}
 	cl, err := Authorize(c)
@@ -171,7 +171,7 @@ func (ap *AiApi) GetChatSession(c *gin.Context) {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
-	session, err := ap.aiService.GetChatSession(c.Request.Context(), cl.UserId, chatId)
+	session, err := ap.aiService.GetChatSession(c.Request.Context(), cl.UserId, sessionId)
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
 		return
@@ -182,9 +182,9 @@ func (ap *AiApi) GetChatSession(c *gin.Context) {
 //
 //// ResumeStreamChat 如果 Redis 中有未完成的流式内容，继续流式输出
 //func (ap *AiApi) ResumeStreamChat(c *gin.Context) {
-//	chatId := c.Query("chat_id")
-//	if chatId == "" {
-//		response.ErrorWithMsg(c, "missing chat_id")
+//	sessionId := c.Query("session_id")
+//	if sessionId == "" {
+//		response.ErrorWithMsg(c, "missing session_id")
 //		return
 //	}
 //
@@ -198,7 +198,7 @@ func (ap *AiApi) GetChatSession(c *gin.Context) {
 //	ctx := context.Background()
 //
 //	// 检查 Redis 中是否有未完成的流式内容
-//	redisMsg, exists := ap.aiService.getChatFromRedis(ctx, chatId)
+//	redisMsg, exists := ap.aiService.getChatFromRedis(ctx, sessionId)
 //	if !exists || redisMsg == nil {
 //		response.ErrorWithMsg(c, "no streaming session found in redis")
 //		return
@@ -221,7 +221,7 @@ func (ap *AiApi) GetChatSession(c *gin.Context) {
 //	c.Header("Cache-Control", "no-cache")
 //
 //	rp := response.StandardAiResponse{
-//		ChatId:  chatId,
+//		SessionId: sessionId,
 //		Status:  true,
 //		Content: "",
 //	}
@@ -253,12 +253,13 @@ func (ap *AiApi) GetChatSession(c *gin.Context) {
 //		if c.Writer.Status() != http.StatusOK {
 //			return errors.New("client disconnected")
 //		}
-//		rp.Content = data
-//		return writeSSE(rp)
+// rp.SessionId = sessionId
+// rp.Content = data
+// return writeSSE(rp)
 //	}
 //
 //	// 等待流式完成（不重新生成，只等待）
-//	if err := ap.aiService.WaitForStreamComplete(ctx, userId, chatId, pushStream); err != nil {
+//	if err := ap.aiService.WaitForStreamComplete(ctx, userId, sessionId, pushStream); err != nil {
 //		rp.Status = false
 //		rp.Message = err.Error()
 //		_ = writeSSE(rp)
@@ -275,7 +276,7 @@ func (ap *AiApi) OnlineStreamChat(c *gin.Context) {
 	//ctx := c.Request.Context()
 
 	ctx := context.Background()
-	chatId := c.Query("chat_id")
+	sessionId := c.Query("session_id")
 	cl, err := Authorize(c)
 	if err != nil {
 		response.ErrorWithMsg(c, err.Error())
@@ -289,8 +290,8 @@ func (ap *AiApi) OnlineStreamChat(c *gin.Context) {
 	}
 	agentId := req.AgentId
 
-	if chatId == "" {
-		chatId = utils.GenerateUUID()
+	if sessionId == "" {
+		sessionId = utils.GenerateUUID()
 	}
 
 	c.Header("Content-Type", "text/event-stream")
@@ -298,10 +299,10 @@ func (ap *AiApi) OnlineStreamChat(c *gin.Context) {
 	c.Header("Cache-Control", "no-cache")
 
 	rp := response.StandardAiResponse{
-		AgentId: agentId,
-		ChatId:  chatId,
-		Status:  true,
-		Content: "",
+		AgentId:   agentId,
+		SessionId: sessionId,
+		Status:    true,
+		Content:   "",
 	}
 
 	writeSSE := func(payload interface{}) error {
@@ -318,12 +319,12 @@ func (ap *AiApi) OnlineStreamChat(c *gin.Context) {
 		return nil
 	}
 
-	history := ap.aiService.GetChatHistory(ctx, userId, chatId)
+	history := ap.aiService.GetChatHistory(ctx, userId, sessionId)
 	if err := writeSSE(response.OnlineStreamChatResponse{
-		ChatId:  chatId,
-		AgentId: agentId,
-		UserId:  userId,
-		History: history,
+		SessionId: sessionId,
+		AgentId:   agentId,
+		UserId:    userId,
+		History:   history,
 	}); err != nil {
 		return
 	}
@@ -336,7 +337,7 @@ func (ap *AiApi) OnlineStreamChat(c *gin.Context) {
 		rp.Content = data
 		return writeSSE(rp)
 	}
-	if err := ap.aiService.StreamChat(ctx, userId, agentId, chatId, &req, pushStream); err != nil {
+	if err := ap.aiService.StreamChat(ctx, userId, agentId, sessionId, &req, pushStream); err != nil {
 		rp.Status = false
 		rp.Message = err.Error()
 		_ = writeSSE(rp)

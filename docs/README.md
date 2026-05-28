@@ -119,9 +119,9 @@ Cache-Control: no-cache
 **事件格式**（每行以 `data: ` 开头，`\n\n` 结尾）：
 
 ```
-data: {"chat_id":"uuid","content":"思考中","status":true}
-data: {"chat_id":"uuid","content":"文本块","status":true}
-data: {"chat_id":"uuid","content":"","status":true,"message":"done"}
+data: {"session_id":"uuid","content":"思考中","status":true}
+data: {"session_id":"uuid","content":"文本块","status":true}
+data: {"session_id":"uuid","content":"","status":true,"message":"done"}
 ```
 
 | 事件 | 说明 |
@@ -450,7 +450,7 @@ await request('/api/post/favorite', { method: 'POST', body: JSON.stringify({ pos
 | `/api/invoke_agent` | POST | 非流式调用 | 是 |
 | `/api/chat` | POST | 流式聊天 (SSE) | 是 |
 | `/api/chats` | GET | 聊天会话列表 | 是 |
-| `/api/chat/:chatId` | GET | 聊天会话详情 | 是 |
+| `/api/chat/:session_id` | GET | 聊天会话详情 | 是 |
 
 ### 行情
 

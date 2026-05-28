@@ -129,7 +129,7 @@ Dislike a comment. Requires authentication.
 
 ## GET /api/post/:id/comments
 
-Get comments for a specific post.
+Get comments for a specific post. Requires authentication.
 
 **Path Parameters:**
 - `id` (integer) - Post ID
@@ -172,7 +172,7 @@ Get comments for a specific post.
 
 ## GET /api/video/:id/comments
 
-Get comments for a specific video.
+Get comments for a specific video. Requires authentication.
 
 **Path Parameters:**
 - `id` (integer) - Video ID
@@ -187,7 +187,7 @@ Get comments for a specific video.
 
 ## GET /api/user/:id/comments
 
-Get all comments made by a specific user.
+Get all comments made by a specific user. Requires authentication.
 
 **Path Parameters:**
 - `id` (integer) - User ID

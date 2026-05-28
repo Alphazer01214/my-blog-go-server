@@ -7,13 +7,12 @@ import (
 	"blog.alphazer01214.top/internal/global"
 	"blog.alphazer01214.top/internal/request"
 	"blog.alphazer01214.top/internal/response"
-	"blog.alphazer01214.top/internal/service"
 	"blog.alphazer01214.top/internal/utils"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 )
 
-func JWTAuthMiddleware(userService *service.UserService) gin.HandlerFunc {
+func JWTAuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		fmt.Println("================JWT auth middleware================")
 		accessToken := utils.GetAccessTokenCookie(c)

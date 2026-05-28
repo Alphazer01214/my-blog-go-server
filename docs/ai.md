@@ -1,38 +1,35 @@
 # AI API
 
-| Method | Endpoint            | Description               |
-| ------ | ------------------- | ------------------------- |
-| POST   | /api/agents         | Create agent              |
-| PUT    | /api/agents/:id     | Update agent              |
-| GET    | /api/agents         | List agents               |
-| GET    | /api/agent/:id      | Get agent detail          |
-| POST   | /api/invoke_agent   | Invoke agent (sync)       |
-| POST   | /api/chat           | Chat with agent (SSE)     |
-| GET    | /api/chats          | List chat sessions        |
-| GET    | /api/chat/:chatId   | Get chat session          |
+| Method | Endpoint              | Description               |
+| ------ | --------------------- | ------------------------- |
+| POST   | /api/agents           | Create agent              |
+| PUT    | /api/agents/:id       | Update agent              |
+| GET    | /api/agents           | List agents               |
+| GET    | /api/agent/:id        | Get agent detail          |
+| POST   | /api/invoke_agent     | Invoke agent (sync)       |
+| POST   | /api/chat             | Chat with agent (SSE)     |
+| GET    | /api/chats            | List chat sessions        |
+| GET    | /api/chat/:session_id | Get chat session          |
 
 ---
 
 ## POST /api/agents
 
-Create a new AI agent. Requires authentication.
+创建新 Agent。需要登录。
 
 **Request Body:**
 
 ```json
 {
-  "name": "string (required)",
-  "base_url": "string (required)",
-  "api_key": "string (required)",
-  "model_name": "string (required)",
-  "provider": "string (required)",
-  "temperature": 0.7,
-  "thinking": false,
-  "tools": [],
-  "prompts": [],
-  "memories": []
+  "agent_name": "助手",
+  "base_url": "https://api.openai.com/v1",
+  "api_key": "sk-xxx",
+  "model_name": "gpt-4o-mini",
+  "provider": "openai"
 }
 ```
+
+- `provider`：`openai` 或 `ollama`
 
 **Response:**
 
@@ -44,17 +41,17 @@ Create a new AI agent. Requires authentication.
     "created_at": "2026-01-01T00:00:00Z",
     "updated_at": "2026-01-01T00:00:00Z",
     "user_id": 1,
-    "name": "Trading Assistant",
+    "name": "助手",
     "base_url": "https://api.openai.com/v1",
     "api_key": "sk-***",
-    "model_name": "gpt-4",
+    "model_name": "gpt-4o-mini",
     "provider": "openai",
     "activate": true,
     "temperature": 0.7,
     "thinking": false,
-    "tools": [],
-    "prompts": [],
-    "memories": []
+    "tools": {},
+    "prompts": {},
+    "memories": {}
   },
   "msg": "success"
 }
@@ -64,20 +61,20 @@ Create a new AI agent. Requires authentication.
 
 ## PUT /api/agents/:id
 
-Update an existing agent. Requires authentication (must be owner).
+更新 Agent。需要登录（必须是创建者）。
 
 **Path Parameters:**
 - `id` (integer) - Agent ID
 
-**Request Body:** Same as `POST /api/agents`.
+**Request Body:** 同 `POST /api/agents`。
 
-**Response:** Same as `POST /api/agents`.
+**Response:** 同 `POST /api/agents`。
 
 ---
 
 ## GET /api/agents
 
-List all agents belonging to the current user. Requires authentication.
+获取当前用户的 Agent 列表。需要登录。
 
 **Response:**
 
@@ -95,7 +92,7 @@ List all agents belonging to the current user. Requires authentication.
 
 ## GET /api/agent/:id
 
-Get a specific agent by ID.
+获取指定 Agent 详情。需要登录。
 
 **Path Parameters:**
 - `id` (integer) - Agent ID
@@ -107,20 +104,14 @@ Get a specific agent by ID.
   "code": 0,
   "data": {
     "id": 1,
-    "created_at": "2026-01-01T00:00:00Z",
-    "updated_at": "2026-01-01T00:00:00Z",
-    "user_id": 1,
-    "name": "Trading Assistant",
-    "base_url": "https://api.openai.com/v1",
-    "api_key": "sk-***",
-    "model_name": "gpt-4",
+    "name": "助手",
+    "model_name": "gpt-4o-mini",
     "provider": "openai",
-    "activate": true,
     "temperature": 0.7,
     "thinking": false,
-    "tools": [],
-    "prompts": [],
-    "memories": []
+    "tools": {},
+    "prompts": {},
+    "memories": {}
   },
   "msg": "success"
 }
@@ -130,15 +121,15 @@ Get a specific agent by ID.
 
 ## POST /api/invoke_agent
 
-Invoke an agent synchronously. Requires authentication.
+非流式调用 Agent（同步返回完整结果）。需要登录。
 
 **Request Body:**
 
 ```json
 {
   "agent_id": 1,
-  "usr_prompt": "string (required)",
-  "sys_prompt": "string (optional)"
+  "usr_prompt": "你好",
+  "sys_prompt": "你是一个交易助手"
 }
 ```
 
@@ -149,8 +140,9 @@ Invoke an agent synchronously. Requires authentication.
   "code": 0,
   "data": {
     "agent_id": 1,
-    "content": "The agent's response text...",
-    "status": "success",
+    "session_id": "uuid",
+    "content": "AI 回复内容",
+    "status": true,
     "message": ""
   },
   "msg": "success"
@@ -161,36 +153,62 @@ Invoke an agent synchronously. Requires authentication.
 
 ## POST /api/chat
 
-Chat with an agent via Server-Sent Events (SSE). Requires authentication.
+流式 AI 聊天（SSE）。需要登录。
+
+`session_id` 通过 **Query 参数** 传递，不是 Request Body。
+
+- 新对话：前端生成 `session_id`（`crypto.randomUUID()`）
+- 追问：传入相同的 `session_id` 以延续会话
+
+**Query Parameters:**
+- `session_id` (string) - 会话 UUID。不传则后端自动生成。
 
 **Request Body:**
 
 ```json
 {
   "agent_id": 1,
-  "chat_id": "string (optional, for continuing a conversation)",
-  "prompt": "string (required)"
+  "usr_prompt": "什么是止损？",
+  "sys_prompt": "你是一个交易助手"
 }
 ```
 
-**Response (SSE stream):**
+**SSE 响应：**
+
+首帧（含历史）：
 
 ```
-data: {"content": "chunk1"}
-data: {"content": " chunk2"}
-data: {"content": " chunk3"}
-data: [DONE]
+data: {"session_id":"uuid","agent_id":1,"user_id":1,"history":[{"role":"user","content":"你好"},{"role":"assistant","content":"你好！"}]}
+```
+
+流式块：
+
+```
+data: {"agent_id":1,"session_id":"uuid","content":"止损","status":true,"message":""}
+data: {"agent_id":1,"session_id":"uuid","content":"是一种","status":true,"message":""}
+```
+
+完成帧：
+
+```
+data: {"agent_id":1,"session_id":"uuid","content":"","status":true,"message":"done"}
+```
+
+错误帧：
+
+```
+data: {"agent_id":1,"session_id":"uuid","content":"","status":false,"message":"错误描述"}
 ```
 
 ---
 
 ## GET /api/chats
 
-List chat sessions with pagination. Requires authentication.
+获取当前用户的聊天会话列表。需要登录。
 
 **Query Parameters:**
-- `page` (integer, default: 1) - Page number
-- `page_size` (integer, default: 10) - Items per page
+- `page` (integer, default: 1)
+- `page_size` (integer, default: 20)
 
 **Response:**
 
@@ -200,10 +218,11 @@ List chat sessions with pagination. Requires authentication.
   "data": {
     "sessions": [
       {
-        "id": "chat-uuid",
+        "id": 1,
+        "uuid": "session-uuid",
         "agent_id": 1,
         "user_id": 1,
-        "title": "Trading discussion",
+        "title": "交易讨论",
         "messages": [],
         "created_at": "2026-01-01T00:00:00Z",
         "updated_at": "2026-01-01T00:00:00Z"
@@ -211,7 +230,7 @@ List chat sessions with pagination. Requires authentication.
     ],
     "total": 25,
     "page": 1,
-    "page_size": 10
+    "page_size": 20
   },
   "msg": "success"
 }
@@ -219,12 +238,12 @@ List chat sessions with pagination. Requires authentication.
 
 ---
 
-## GET /api/chat/:chatId
+## GET /api/chat/:session_id
 
-Get a specific chat session with all messages. Requires authentication.
+获取指定聊天会话详情（含消息）。需要登录。
 
 **Path Parameters:**
-- `chatId` (string) - Chat session ID
+- `session_id` (string) - 会话 UUID
 
 **Response:**
 
@@ -232,18 +251,27 @@ Get a specific chat session with all messages. Requires authentication.
 {
   "code": 0,
   "data": {
-    "id": "chat-uuid",
+    "id": 1,
+    "uuid": "session-uuid",
     "agent_id": 1,
     "user_id": 1,
-    "title": "Trading discussion",
+    "title": "交易讨论",
     "messages": [
       {
         "role": "user",
-        "content": "What is a stop loss?"
+        "content": "什么是止损？",
+        "is_done": false,
+        "is_error": false,
+        "use_tool": false,
+        "time": 1716624000
       },
       {
         "role": "assistant",
-        "content": "A stop loss is..."
+        "content": "止损是一种...",
+        "is_done": true,
+        "is_error": false,
+        "use_tool": false,
+        "time": 1716624001
       }
     ],
     "created_at": "2026-01-01T00:00:00Z",

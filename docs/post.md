@@ -291,24 +291,36 @@ Search posts by keyword.
 
 ## POST /api/post/ask
 
-Ask an AI agent about a post. Returns a Server-Sent Events (SSE) stream. Requires authentication.
+对帖子进行 AI 问答（SSE 流式）。需要登录。
 
 **Request Body:**
 
 ```json
 {
   "post_id": 1,
-  "mode": "string",
-  "prompt": "string (optional)",
-  "selected_text": "string (optional)",
-  "chat_id": "string"
+  "session_id": "uuid（前端生成，新对话用 crypto.randomUUID()，追问传相同值）",
+  "mode": "ask",
+  "prompt": "这篇文章主要讲了什么？",
+  "selected_text": "（可选，mode=selected 时需要）"
 }
 ```
 
-**Response (SSE stream):**
+**Mode 说明：**
+
+| mode | 说明 |
+|------|------|
+| `summarize` | 总结文章，忽略 `prompt` |
+| `ask` | 对文章提问 |
+| `selected` | 划词提问，需传 `selected_text` |
+
+**SSE 响应：**
 
 ```
-data: {"content": "chunk1"}
-data: {"content": "chunk2"}
-data: [DONE]
+data: {"session_id":"uuid","content":"思考中","status":true}
+data: {"session_id":"uuid","content":"这是回答内容...","status":true}
+data: {"session_id":"uuid","content":"","status":true,"message":"done"}
 ```
+
+- `content` 为增量文本（非完整内容拼接）
+- 完成帧 `message` = `"done"`
+- 错误帧 `status` = `false`

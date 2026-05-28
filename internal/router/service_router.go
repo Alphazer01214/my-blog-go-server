@@ -27,6 +27,6 @@ func SetupServiceRouter(r *gin.Engine, apis *api.Apis, userService *service.User
 		protected.POST("/invoke_agent", aiApi.Invoke)
 		protected.POST("/chat", aiApi.OnlineStreamChat)
 		protected.GET("/chats", aiApi.ListChats)
-		protected.GET("/chat/:chatId", aiApi.GetChatSession)
+		protected.GET("/chat/:session_id", aiApi.GetChatSession)
 	}
 }

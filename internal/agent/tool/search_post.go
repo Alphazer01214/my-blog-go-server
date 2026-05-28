@@ -32,7 +32,7 @@ func (sp *SearchPost) InvokableRun(ctx context.Context, argumentsInJSON string, 
 		return "未检索到相关帖子", nil
 	}
 
-	resp := "检索到以下帖子：\n"
+	resp := "检索到以下帖子，结合这些帖子的内容回答用户的问题：\n"
 	for idx, post := range postEntities {
 		title := post.Title
 		content := post.Content

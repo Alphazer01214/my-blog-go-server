@@ -9,7 +9,7 @@ import (
 
 type StandardAiResponse struct {
 	AgentId          uint   `json:"agent_id"`
-	ChatId           string `json:"chat_id,omitempty"`
+	SessionId        string `json:"session_id,omitempty"`
 	ReasoningContent string `json:"reasoning_content"`
 	Content          string `json:"content"`
 	Status           bool   `json:"status"`
@@ -17,10 +17,10 @@ type StandardAiResponse struct {
 }
 
 type OnlineStreamChatResponse struct {
-	ChatId  string            `json:"chat_id"`
-	AgentId uint              `json:"agent_id"`
-	UserId  uint              `json:"user_id"`
-	History []*schema.Message `json:"history"`
+	SessionId string            `json:"session_id"`
+	AgentId   uint              `json:"agent_id"`
+	UserId    uint              `json:"user_id"`
+	History   []*schema.Message `json:"history"`
 }
 
 type AgentInfo struct {

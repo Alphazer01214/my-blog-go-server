@@ -314,6 +314,9 @@ func (pa *PostApi) Update(c *gin.Context) {
 
 func (pa *PostApi) Ask(c *gin.Context) {
 	ctx := context.Background()
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Connection", "keep-alive")
+	c.Header("Cache-Control", "no-cache")
 
 	cl, err := Authorize(c)
 	if err != nil {
@@ -334,27 +337,11 @@ func (pa *PostApi) Ask(c *gin.Context) {
 		return
 	}
 
-	chatId := req.ChatId
-	if chatId == "" {
+	sessionId := req.SessionId
+	if sessionId == "" {
 		response.ErrorWithMsg(c, "need provide uuid")
 		return
 	}
-
-	var userPrompt string
-	switch req.Mode {
-	case "summarize":
-		userPrompt = fmt.Sprintf("请总结以下文章：\n\n标题：%s\n\n文章内容：\n%s", post.Title, post.Content)
-	case "selected":
-		userPrompt = fmt.Sprintf("基于以下文章回答用户问题：\n\n标题：%s\n\n文章内容：\n%s\n\n用户选中文本：\n%s\n\n用户问题：%s",
-			post.Title, post.Content, req.SelectedText, req.Prompt)
-	default: // "ask"
-		userPrompt = fmt.Sprintf("基于以下文章回答用户问题：\n\n标题：%s\n\n文章内容：\n%s\n\n用户问题：%s",
-			post.Title, post.Content, req.Prompt)
-	}
-
-	c.Header("Content-Type", "text/event-stream")
-	c.Header("Connection", "keep-alive")
-	c.Header("Cache-Control", "no-cache")
 
 	writeSSE := func(payload interface{}) error {
 		j, err := json.Marshal(payload)
@@ -372,11 +359,23 @@ func (pa *PostApi) Ask(c *gin.Context) {
 
 	pushStream := func(data string) error {
 		resp := map[string]interface{}{
-			"chat_id": chatId,
-			"content": data,
-			"status":  true,
+			"session_id": sessionId,
+			"content":    data,
+			"status":     true,
 		}
 		return writeSSE(resp)
+	}
+
+	var userPrompt string
+	switch req.Mode {
+	case "summarize":
+		userPrompt = fmt.Sprintf("请总结以下文章：\n\n标题：%s\n\n文章内容：\n%s", post.Title, post.Content)
+	case "selected":
+		userPrompt = fmt.Sprintf("基于以下文章回答用户问题：\n\n标题：%s\n\n文章内容：\n%s\n\n用户选中文本：\n%s\n\n用户问题：%s",
+			post.Title, post.Content, req.SelectedText, req.Prompt)
+	default: // "ask"
+		userPrompt = fmt.Sprintf("基于以下文章回答用户问题：\n\n标题：%s\n\n文章内容：\n%s\n\n用户问题：%s",
+			post.Title, post.Content, req.Prompt)
 	}
 
 	tmpReq := &request.TmpChatRequest{
@@ -386,21 +385,21 @@ func (pa *PostApi) Ask(c *gin.Context) {
 		Prompt:  userPrompt,
 	}
 
-	if err := pa.aiService.TmpToolCallingStreamChat(ctx, userId, chatId, tmpReq, pushStream); err != nil {
+	if err := pa.aiService.TmpToolCallingStreamChat(ctx, userId, sessionId, tmpReq, pushStream); err != nil {
 		resp := map[string]interface{}{
-			"chat_id": chatId,
-			"content": "",
-			"status":  false,
-			"message": err.Error(),
+			"session_id": sessionId,
+			"content":    "",
+			"status":     false,
+			"message":    err.Error(),
 		}
 		_ = writeSSE(resp)
 		return
 	}
 
 	_ = writeSSE(map[string]interface{}{
-		"chat_id": chatId,
-		"content": "",
-		"status":  true,
-		"message": "done",
+		"session_id": sessionId,
+		"content":    "",
+		"status":     true,
+		"message":    "done",
 	})
 }

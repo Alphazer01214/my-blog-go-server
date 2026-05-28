@@ -54,7 +54,7 @@ type TmpChatRequest struct {
 }
 
 type PostAskRequest struct {
-	ChatId       string `json:"chat_id"`       // 前端生成的 UUID，追问时传相同值以延续会话
+	SessionId    string `json:"session_id"` // 前端生成的 UUID，追问时传相同值以延续会话
 	PostId       uint   `json:"post_id" binding:"required"`
 	Prompt       string `json:"prompt"`
 	SelectedText string `json:"selected_text"`
