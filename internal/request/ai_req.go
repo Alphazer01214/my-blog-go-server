@@ -64,3 +64,12 @@ type PostAskRequest struct {
 	ApiKey  string `json:"api_key"`
 	Model   string `json:"model"`
 }
+
+type DeleteChatSessionRequest struct {
+	ChatId string `json:"chat_id" binding:"required"`
+}
+
+type UpdateChatSessionRequest struct {
+	ChatId string `json:"chat_id" binding:"required"`
+	Title  string `json:"title"`
+}

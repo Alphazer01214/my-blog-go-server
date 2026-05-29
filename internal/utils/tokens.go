@@ -13,7 +13,6 @@ import (
 	"blog.alphazer01214.top/internal/request"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
-	"gorm.io/gorm"
 )
 
 func GenerateBaseClaims(id uint, username string, role entity.RoleType) request.BaseClaims {
@@ -79,11 +78,11 @@ func SetAccessTokenCookie(c *gin.Context, token string, age int) {
 }
 
 func RemoveRefreshTokenCookie(c *gin.Context) {
-	setCookies(c, constant.CookieRefreshToken, "", -1, "")
+	setCookies(c, constant.CookieRefreshToken, "", 0, "")
 }
 
 func RemoveAccessTokenCookie(c *gin.Context) {
-	setCookies(c, constant.CookieAccessToken, "", -1, "")
+	setCookies(c, constant.CookieAccessToken, "", 0, "")
 }
 
 func GetRefreshTokenCookie(c *gin.Context) string {
@@ -117,19 +116,19 @@ func GetRefreshTokenRedis(id uint) (string, error) {
 }
 
 func TokenJoinBlacklist(token string) error {
-	return global.GetDB().Create(&entity.TokenBlacklist{
-		Token: token,
-	}).Error
+	ctx := context.Background()
+	expire := time.Duration(global.GetConfig().JWT.RefreshTokenExpireTime) * time.Second
+	return global.GetRedis().Set(ctx, "token:blacklist:"+token, "1", expire).Err()
 }
 
-// IsTokenBlacklisted 判断token是否在postgres黑名单中
+// IsTokenBlacklisted 判断token是否在redis黑名单中
 func IsTokenBlacklisted(token string) (bool, error) {
-	var count int64
-	err := global.GetDB().Model(&entity.TokenBlacklist{}).Where("token = ?", token).Count(&count).Error
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+	ctx := context.Background()
+	exists, err := global.GetRedis().Exists(ctx, "token:blacklist:"+token).Result()
+	if err != nil {
 		return false, err
 	}
-	return count > 0, nil
+	return exists > 0, nil
 }
 
 // ParseAccessToken 接收token返回claims
@@ -173,7 +172,7 @@ func setCookies(c *gin.Context, name string, value string, age int, host string)
 		HttpOnly: true,
 		SameSite: sameSite,
 	}
-	c.Header("Set-Cookie", cookie.String())
+	c.Writer.Header().Add("Set-Cookie", cookie.String())
 }
 
 func parseToken(input string, claims jwt.Claims, secret interface{}) (interface{}, error) {

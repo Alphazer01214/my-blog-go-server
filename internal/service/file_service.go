@@ -178,6 +178,7 @@ func (fs *FileService) CompleteUpload(userId uint, uploadId string, title string
 		Size:        session.FileSize,
 		MimeType:    session.MimeType,
 		Public:      public,
+		Type:        "file",
 	}
 	if err := global.GetDB().Create(video).Error; err != nil {
 		os.Remove(finalPath)
@@ -262,7 +263,7 @@ func (fs *FileService) GetVideoById(id uint) (*entity.Video, error) {
 func (fs *FileService) ListFiles(page, pageSize int, viewerId uint) (response.FileList, error) {
 	var videos []entity.Video
 	var total int64
-	db := global.GetDB().Model(&entity.Video{})
+	db := global.GetDB().Model(&entity.Video{}).Where("type = ?", "file")
 	if viewerId == 0 {
 		db = db.Where("public = ?", true)
 	}
@@ -290,7 +291,7 @@ func (fs *FileService) ListFiles(page, pageSize int, viewerId uint) (response.Fi
 func (fs *FileService) GetFilesByUserId(userId uint, page, pageSize int, viewerId uint) (response.FileList, error) {
 	var videos []entity.Video
 	var total int64
-	db := global.GetDB().Model(&entity.Video{}).Where("user_id = ?", userId)
+	db := global.GetDB().Model(&entity.Video{}).Where("user_id = ? AND type = ?", userId, "file")
 	if viewerId != 0 && viewerId != userId {
 		db = db.Where("public = ?", true)
 	}

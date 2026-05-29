@@ -1,0 +1,11 @@
+.git
+.idea
+*.exe
+main
+blog.alphazer01214.top
+config/
+cert/
+upload/
+docs/
+requests/
+.env

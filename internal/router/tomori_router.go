@@ -36,6 +36,10 @@ func SetupTomoriRouter(r *gin.Engine) {
 		protected.GET("/files", tomoriApi.ListFiles)
 		protected.DELETE("/file/:id", tomoriApi.DeleteFile)
 
+		// 视频管理
+		protected.GET("/videos", tomoriApi.ListVideos)
+		protected.DELETE("/video/:id", tomoriApi.DeleteVideo)
+
 		// AI 智能体管理
 		protected.GET("/agents", tomoriApi.ListAgents)
 		protected.DELETE("/agent/:id", tomoriApi.DeleteAgent)

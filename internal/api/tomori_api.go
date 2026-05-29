@@ -238,6 +238,41 @@ func (ta *TomoriApi) DeleteFile(c *gin.Context) {
 	response.SuccessWithMsg(c, "ok")
 }
 
+// ======================== 视频管理 ========================
+
+// ListVideos GET /api/tomori/videos - 分页查询所有视频（含私密）
+func (ta *TomoriApi) ListVideos(c *gin.Context) {
+	if _, err := authorizeTomori(c); err != nil {
+		response.ErrorWithMsg(c, err.Error())
+		return
+	}
+	page, pageSize := parsePagination(c)
+	rp, err := tomoriService.ListAllVideos(page, pageSize)
+	if err != nil {
+		response.ErrorWithMsg(c, err.Error())
+		return
+	}
+	response.SuccessWithDetail(c, rp, "ok")
+}
+
+// DeleteVideo DELETE /api/tomori/video/:id - 删除任意视频
+func (ta *TomoriApi) DeleteVideo(c *gin.Context) {
+	if _, err := authorizeTomori(c); err != nil {
+		response.ErrorWithMsg(c, err.Error())
+		return
+	}
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		response.ErrorWithMsg(c, "invalid video id")
+		return
+	}
+	if err := tomoriService.ForceDeleteVideo(uint(id)); err != nil {
+		response.ErrorWithMsg(c, err.Error())
+		return
+	}
+	response.SuccessWithMsg(c, "ok")
+}
+
 // ======================== AI 智能体管理 ========================
 
 // ListAgents GET /api/tomori/agents - 查看所有用户的智能体

@@ -79,6 +79,11 @@ func (u *UserApi) Logout(c *gin.Context) {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
+	// 同时将 accessToken 加入黑名单，防止在 accessToken 过期前被滥用
+	if err := utils.TokenJoinBlacklist(accessToken); err != nil {
+		response.ErrorWithMsg(c, err.Error())
+		return
+	}
 	claims, err := utils.ParseRefreshToken(refreshToken)
 	if err == nil {
 		global.GetRedis().Del(context.Background(), strconv.Itoa(int(claims.Id)))

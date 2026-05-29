@@ -7,7 +7,6 @@
 | `/api/auth/register` | POST | 注册 | 否 |
 | `/api/auth/login` | POST | 登录 | 否 |
 | `/api/auth/logout` | POST | 退出 | 是 |
-| `/api/auth/refresh` | GET | 刷新 Token | 否（使用 refresh-token cookie） |
 
 ---
 
@@ -48,55 +47,112 @@ Token 通过 **Set-Cookie** 下发。前端**无需**读写 `Authorization` head
 
 ```json
 {
-  "username": "string (3-32位字母数字下划线)",
-  "password": "string (6-128位)"
+  "username": "testuser",
+  "password": "123456",
+  "env": {
+    "ipv4": "192.168.1.1",
+    "ipv6": "",
+    "os": "Windows 11",
+    "device_info": "Chrome 120"
+  }
 }
 ```
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `username` | string | 是 | 3-32位字母数字下划线 |
+| `password` | string | 是 | 6-128位 |
+| `env` | object | 否 | 环境信息 |
 
 **Response**（`code: 0`）：
 
 ```json
 {
+  "code": 0,
   "data": {
+    "env": {
+      "ipv4": "192.168.1.1",
+      "ipv6": "",
+      "os": "Windows 11",
+      "device_info": "Chrome 120"
+    },
     "username": "testuser"
-  }
+  },
+  "msg": "Success"
 }
 ```
 
 ### POST /api/auth/login
 
+登录并获取 Token。
+
 **Request Body**：
 
 ```json
 {
-  "username": "string",
-  "password": "string",
-  "env_info": {
-    "ipv4": "string",
-    "ipv6": "string",
-    "os": "string",
-    "device_info": "string"
+  "username": "testuser",
+  "password": "123456",
+  "env": {
+    "ipv4": "192.168.1.1",
+    "ipv6": "",
+    "os": "Windows 11",
+    "device_info": "Chrome 120"
   }
 }
 ```
 
-`env_info` 可选。
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `username` | string | 是 | 用户名 |
+| `password` | string | 是 | 密码 |
+| `env` | object | 否 | 环境信息 |
 
 **Response**（`code: 0`）：
 
 ```json
 {
+  "code": 0,
   "data": {
-    "username": "testuser",
-    "user_id": 1,
-    "role_type": "normal_user"
-  }
+    "env": {
+      "ipv4": "192.168.1.1",
+      "ipv6": "",
+      "os": "Windows 11",
+      "device_info": "Chrome 120"
+    },
+    "token": {
+      "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+      "access_token_expire_time": 900,
+      "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+      "refresh_token_expire_time": 604800
+    },
+    "user_info": {
+      "user_id": 1,
+      "username": "testuser",
+      "email": "test@example.com",
+      "phone": "",
+      "bio": "",
+      "avatar": "",
+      "admin": false,
+      "role": "normal_user",
+      "banned": false,
+      "follower_count": 0,
+      "following_count": 0,
+      "post_count": 0,
+      "comment_count": 0,
+      "received_like_count": 0,
+      "received_dislike_count": 0,
+      "is_followed": false,
+      "created_at": "2024-01-01T00:00:00Z",
+      "updated_at": "2024-01-01T00:00:00Z"
+    }
+  },
+  "msg": "Success"
 }
 ```
 
 Token 自动注入到 `Set-Cookie` 响应头。
 
-**重复登录处理**：该用户之前的 refresh-token 会被写入黑名单（基于 DB token_blacklist 表）。
+**重复登录处理**：该用户之前的 refresh-token 会被写入黑名单（基于 Redis token:blacklist 前缀，自动过期）。
 
 ### POST /api/auth/logout
 
@@ -108,15 +164,11 @@ Token 自动注入到 `Set-Cookie` 响应头。
 
 ```json
 {
-  "data": null
+  "code": 0,
+  "data": {},
+  "msg": "Success"
 }
 ```
-
-### GET /api/auth/refresh
-
-使用 `refresh-token` cookie 获取新的 Token 对。
-
-**Response**（`code: 0`）：与登录相同的新 Token 注入到 Cookie。
 
 ---
 
@@ -135,5 +187,5 @@ Token 自动注入到 `Set-Cookie` 响应头。
    - 当收到 `{ code: 7, data: { reload: true } }` 时，跳转到登录页面
 
 4. **退出流程**：
-   - 调用 `POST /api/auth/logout（credentials: "include"）`
+   - 调用 `POST /api/auth/logout`（`credentials: "include"`）
    - 清除前端状态（Pinia store / localStorage）

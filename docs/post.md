@@ -4,21 +4,24 @@
 
 | 端点 | 方法 | 说明 | 是否需要登录 |
 |------|------|------|------------|
-| `/api/post/create` | POST | 创建帖子 | 是 |
-| `/api/post/:id` | GET | 获取帖子详情 | 否 |
-| `/api/post/:id` | PUT | 更新帖子 | 是 |
+| `/api/create` | POST | 创建帖子 | 是 |
+| `/api/post/:id` | GET | 获取帖子详情 | 是 |
+| `/api/post` | GET | 获取帖子列表 | 是 |
+| `/api/post/search` | GET | 搜索帖子 | 是 |
+| `/api/update` | POST | 更新帖子 | 是 |
 | `/api/post/:id` | DELETE | 删除帖子 | 是 |
-| `/api/post/list` | GET | 获取帖子列表（支持分类筛选） | 否 |
-| `/api/post/:id/interact` | POST | 点赞/点踩/收藏/分享 | 是 |
-| `/api/post/:id/favorited` | GET | 查询是否收藏 | 是 |
-| `/api/post/search` | GET | 搜索帖子 | 否 |
-| `/api/post/ask` | POST | AI 问答（SSE 流式） | 否 |
+| `/api/post/like` | POST | 点赞/取消点赞 | 是 |
+| `/api/post/dislike` | POST | 点踩/取消点踩 | 是 |
+| `/api/post/favorite` | POST | 收藏/取消收藏 | 是 |
+| `/api/post/share` | POST | 分享 | 是 |
+| `/api/post/ask` | POST | AI 问答（SSE 流式） | 是 |
+| `/api/favorites` | GET | 获取收藏列表 | 是 |
 
 ---
 
 ## 端点详情
 
-### POST /api/post/create
+### POST /api/create
 
 创建新帖子。
 
@@ -26,231 +29,455 @@
 
 ```json
 {
-  "title": "帖子标题 (最多 200 字)",
-  "content": "帖子内容 (Markdown)",
-  "tags": ["tag1", "tag2"],
-  "category": "分类标识",
-  "cover_path": "可选封面路径",
-  "type": "text"
+  "env": {
+    "ipv4": "192.168.1.1",
+    "ipv6": "",
+    "os": "Windows 11",
+    "device_info": "Chrome 120"
+  },
+  "title": "帖子标题",
+  "cover": "/uploads/covers/xxx.png",
+  "category": "tech",
+  "tags": ["Go", "Web"],
+  "keywords": ["golang", "gin"],
+  "content": "# 帖子内容\n\nMarkdown 格式",
+  "public": true,
+  "forbid_comment": false,
+  "forbid_share": false
 }
 ```
 
-- `type`：帖子类型标识
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `env` | object | 环境信息（可选） |
+| `title` | string | 帖子标题 |
+| `cover` | string | 封面路径（可选） |
+| `category` | string | 分类标识（可选） |
+| `tags` | array | 标签数组（可选） |
+| `keywords` | array | 关键词数组（可选） |
+| `content` | string | 帖子内容（Markdown） |
+| `public` | bool | 是否公开（默认 false） |
+| `forbid_comment` | bool | 是否禁止评论（默认 false） |
+| `forbid_share` | bool | 是否禁止分享（默认 false） |
 
 **Response**：
 
 ```json
 {
+  "code": 0,
   "data": {
-    "id": 1
-  }
+    "id": 1,
+    "created_at": "2024-01-01T00:00:00Z",
+    "updated_at": "2024-01-01T00:00:00Z",
+    "title": "帖子标题",
+    "cover": "/uploads/covers/xxx.png",
+    "user_id": 1,
+    "tags": ["Go", "Web"],
+    "category": "tech",
+    "keywords": ["golang", "gin"],
+    "content": "# 帖子内容\n\nMarkdown 格式",
+    "view_count": 0,
+    "comment_count": 0,
+    "like_count": 0,
+    "dislike_count": 0,
+    "favorite_count": 0,
+    "share_count": 0,
+    "public": true,
+    "forbid_comment": false,
+    "forbid_share": false,
+    "is_liked": false,
+    "is_disliked": false,
+    "is_favorited": false,
+    "author": {
+      "user_id": 1,
+      "username": "testuser",
+      "email": "test@example.com",
+      "phone": "",
+      "bio": "",
+      "avatar": "",
+      "admin": false,
+      "role": "normal_user",
+      "banned": false,
+      "follower_count": 0,
+      "following_count": 0,
+      "post_count": 1,
+      "comment_count": 0,
+      "received_like_count": 0,
+      "received_dislike_count": 0,
+      "is_followed": false,
+      "created_at": "2024-01-01T00:00:00Z",
+      "updated_at": "2024-01-01T00:00:00Z"
+    },
+    "env": { ... }
+  },
+  "msg": "Success"
 }
 ```
 
 ### GET /api/post/:id
 
-获取帖子详情。
-
-`category`|`tags`|`user_info`|`is_liked`|`is_favorited`|`like_count`|`comment_count`|`favorite_count`|`share_count`
+获取帖子详情。需要登录。
 
 **Response**：
 
 ```json
 {
+  "code": 0,
   "data": {
     "id": 1,
-    "title": "标题",
-    "content": "内容",
-    "tags": ["tag1"],
-    "category": "分类",
-    "cover_path": "",
-    "type": "text",
-    "like_count": 10,
-    "comment_count": 3,
-    "favorite_count": 5,
-    "share_count": 1,
-    "is_liked": false,
-    "is_favorited": false,
-    "is_owner": false,
-    "user_info": {
-      "id": 1,
-      "username": "作者",
-      "avatar_path": "",
-      "role_type": "normal_user"
-    },
-    "role_type": "normal_user",
-    "status": 1,
     "created_at": "2024-01-01T00:00:00Z",
-    "updated_at": "2024-01-01T00:00:00Z"
-  }
+    "updated_at": "2024-01-01T00:00:00Z",
+    "title": "帖子标题",
+    "cover": "/uploads/covers/xxx.png",
+    "user_id": 1,
+    "tags": ["Go", "Web"],
+    "category": "tech",
+    "keywords": ["golang", "gin"],
+    "content": "# 帖子内容\n\nMarkdown 格式",
+    "view_count": 100,
+    "comment_count": 5,
+    "like_count": 20,
+    "dislike_count": 1,
+    "favorite_count": 8,
+    "share_count": 3,
+    "public": true,
+    "forbid_comment": false,
+    "forbid_share": false,
+    "is_liked": false,
+    "is_disliked": false,
+    "is_favorited": false,
+    "author": {
+      "user_id": 1,
+      "username": "testuser",
+      "email": "test@example.com",
+      "phone": "",
+      "bio": "",
+      "avatar": "",
+      "admin": false,
+      "role": "normal_user",
+      "banned": false,
+      "follower_count": 10,
+      "following_count": 5,
+      "post_count": 3,
+      "comment_count": 12,
+      "received_like_count": 42,
+      "received_dislike_count": 2,
+      "is_followed": false,
+      "created_at": "2024-01-01T00:00:00Z",
+      "updated_at": "2024-01-01T00:00:00Z"
+    },
+    "env": { ... }
+  },
+  "msg": "Success"
 }
 ```
 
-- `is_liked`、`is_favorited`：未登录或未操作时返回 `false`
-- `is_owner`：当前用户是否是帖子作者
+### GET /api/post
 
-### PUT /api/post/:id
-
-更新帖子。仅作者可操作。
-
-**Request Body**（全部可选）：
-
-```json
-{
-  "title": "新标题",
-  "content": "新内容",
-  "tags": ["newtag"],
-  "category": "新分类",
-  "cover_path": "新封面",
-  "type": "text"
-}
-```
-
-### DELETE /api/post/:id
-
-删除帖子。仅作者和管理员可操作。
-
-**Response**：标准成功响应。
-
-### GET /api/post/list
-
-获取帖子列表。
+获取帖子列表。需要登录。
 
 **Query 参数**：
 
 | 参数 | 类型 | 必填 | 默认 | 说明 |
 |------|------|------|------|------|
-| `category` | string | 否 | 全部 | 按分类筛选 |
 | `page` | int | 否 | 1 | |
 | `page_size` | int | 否 | 20 | |
-| `user_id` | int | 否 | 0 | 筛选指定用户的帖子 |
 
 **Response**：
 
 ```json
 {
+  "code": 0,
   "data": {
     "items": [
       {
         "id": 1,
-        "title": "标题",
-        "tags": ["tag1"],
-        "category": "分类",
-        "cover_path": "",
-        "type": "text",
-        "like_count": 10,
-        "comment_count": 3,
-        "user_info": {
-          "id": 1,
-          "username": "作者",
-          "avatar_path": ""
-        },
         "created_at": "2024-01-01T00:00:00Z",
-        "updated_at": "2024-01-01T00:00:00Z"
+        "updated_at": "2024-01-01T00:00:00Z",
+        "title": "帖子标题",
+        "cover": "",
+        "user_id": 1,
+        "tags": ["Go"],
+        "category": "tech",
+        "keywords": [],
+        "content": "内容摘要...",
+        "view_count": 100,
+        "comment_count": 5,
+        "like_count": 20,
+        "dislike_count": 1,
+        "favorite_count": 8,
+        "share_count": 3,
+        "public": true,
+        "forbid_comment": false,
+        "forbid_share": false,
+        "is_liked": false,
+        "is_disliked": false,
+        "is_favorited": false,
+        "author": {
+          "user_id": 1,
+          "username": "testuser",
+          "avatar": "",
+          "role": "normal_user"
+        },
+        "env": { ... }
       }
     ],
     "page": 1,
     "page_size": 20,
     "total": 42
-  }
-}
-```
-
-### POST /api/post/:id/interact
-
-对帖子进行交互操作。
-
-**Request Body**：
-
-```json
-{
-  "action_type": "like"
-}
-```
-
-| `action_type` | 说明 | 可重复调用 |
-|---------------|------|-----------|
-| `like` | 点赞（再次调用取消） | 是（toggle） |
-| `dislike` | 点踩（再次调用取消） | 是（toggle） |
-| `favorite` | 收藏（再次调用取消） | 是（toggle） |
-| `share` | 分享计数+1 | 否（计数递增） |
-
-**Response**：
-
-```json
-{
-  "data": {
-    "action_type": "like",
-    "is_active": true
-  }
-}
-```
-
-- `is_active`：`true`=已点赞/收藏，`false`=已取消
-
-### GET /api/post/:id/favorited
-
-查询当前用户是否收藏了该帖子。
-
-**Response**：
-
-```json
-{
-  "data": {
-    "favorited": true
-  }
+  },
+  "msg": "Success"
 }
 ```
 
 ### GET /api/post/search
 
-搜索帖子。
+搜索帖子。需要登录。
 
 **Query 参数**：
 
 | 参数 | 类型 | 必填 | 默认 | 说明 |
 |------|------|------|------|------|
-| `q` | string | 是 | | 搜索关键词 |
+| `keyword` | string | 否 | | 搜索关键词 |
+| `tag` | string | 否 | | 按标签筛选 |
 | `page` | int | 否 | 1 | |
 | `page_size` | int | 否 | 20 | |
 
-### POST /api/post/ask
+**Response**：格式同帖子列表。
 
-对帖子进行 AI 问答（SSE 流式输出）。
+### POST /api/update
+
+更新帖子。仅作者可操作。需要登录。
+
+**Request Body**（全部可选）：
+
+```json
+{
+  "post_id": 1,
+  "env": { ... },
+  "title": "新标题",
+  "cover": "新封面",
+  "category": "new_category",
+  "tags": ["newtag"],
+  "keywords": ["new_keyword"],
+  "content": "新内容",
+  "public": false,
+  "forbid_comment": false,
+  "forbid_share": false
+}
+```
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `post_id` | uint | 帖子 ID（必填） |
+| 其他字段 | 同创建 | 所有字段可选 |
+
+**Response**：
+
+```json
+{
+  "code": 0,
+  "data": { ... },
+  "msg": "Success"
+}
+```
+
+### DELETE /api/post/:id
+
+删除帖子。仅作者和管理员可操作。需要登录。
+
+**Response**：
+
+```json
+{
+  "code": 0,
+  "data": {},
+  "msg": "Success"
+}
+```
+
+---
+
+## 交互操作
+
+### POST /api/post/like
+
+点赞或取消点赞帖子（toggle 切换）。需要登录。
+
+**Request Body**：
+
+```json
+{
+  "post_id": 1
+}
+```
+
+**Response**：
+
+```json
+{
+  "code": 0,
+  "data": {},
+  "msg": "Success"
+}
+```
+
+### POST /api/post/dislike
+
+点踩或取消点踩帖子（toggle 切换）。需要登录。
+
+**Request Body**：
+
+```json
+{
+  "post_id": 1
+}
+```
+
+### POST /api/post/favorite
+
+收藏或取消收藏帖子（toggle 切换）。需要登录。
+
+**Request Body**：
+
+```json
+{
+  "post_id": 1
+}
+```
+
+### GET /api/favorites
+
+获取当前用户的收藏列表。需要登录。
+
+**Query 参数**：
+
+| 参数 | 类型 | 必填 | 默认 | 说明 |
+|------|------|------|------|------|
+| `page` | int | 否 | 1 | |
+| `page_size` | int | 否 | 20 | |
+
+**Response**：
+
+```json
+{
+  "code": 0,
+  "data": {
+    "items": [
+      {
+        "id": 1,
+        "created_at": "2024-01-01T00:00:00Z",
+        "updated_at": "2024-01-01T00:00:00Z",
+        "title": "收藏的帖子标题",
+        "cover": "",
+        "user_id": 1,
+        "tags": ["Go"],
+        "category": "tech",
+        "keywords": [],
+        "content": "内容摘要...",
+        "view_count": 100,
+        "comment_count": 5,
+        "like_count": 20,
+        "dislike_count": 1,
+        "favorite_count": 8,
+        "share_count": 3,
+        "public": true,
+        "forbid_comment": false,
+        "forbid_share": false,
+        "is_liked": false,
+        "is_disliked": false,
+        "is_favorited": true,
+        "author": {
+          "user_id": 1,
+          "username": "testuser",
+          "avatar": "",
+          "role": "normal_user"
+        },
+        "env": { ... }
+      }
+    ],
+    "page": 1,
+    "page_size": 20,
+    "total": 10
+  },
+  "msg": "query favorites success"
+}
+```
+
+### POST /api/post/share
+
+分享帖子（计数+1，非 toggle）。需要登录。
 
 **Request Body**：
 
 ```json
 {
   "post_id": 1,
-  "mode": "ask",
-  "question": "这篇文章主要讲了什么？",
-  "selected_text": "（可选，mode=selected 时需要）",
-  "chat_id": "uuid (前端生成，用于多轮对话)"
+  "share_to": "weibo",
+  "share_message": "分享理由"
 }
 ```
 
-**Mode 说明**：
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `post_id` | uint | 是 | 帖子 ID |
+| `share_to` | string | 否 | 分享目标 |
+| `share_message` | string | 否 | 分享附言 |
 
-| mode | 说明 |
-|------|------|
-| `summarize` | 总结文章，忽略 `question` |
-| `ask` | 对文章提问 |
-| `selected` | 划词提问，需传 `selected_text` |
+---
 
-**`chat_id`**：由前端通过 `crypto.randomUUID()` 生成。首次问答时生成新 UUID，后续轮次传入相同的 `chat_id` 以维持对话上下文。
+## AI 问答
+
+### POST /api/post/ask
+
+对帖子进行 AI 问答（SSE 流式输出）。需要登录。
+
+**Request Body**：
+
+```json
+{
+  "chat_id": "uuid (前端生成，可选)",
+  "post_id": 1,
+  "prompt": "这篇文章主要讲了什么？",
+  "selected_text": "（可选，mode=selected 时需要）",
+  "mode": "ask",
+  "base_url": "https://api.openai.com/v1",
+  "api_key": "sk-xxx",
+  "model": "gpt-4o-mini"
+}
+```
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `chat_id` | string | 否 | 前端 UUID，用于多轮对话。首次不传，后续传入相同值 |
+| `post_id` | uint | 是 | 帖子 ID |
+| `prompt` | string | 否 | 用户提问内容 |
+| `selected_text` | string | 否 | 划词内容（mode=selected 时需要） |
+| `mode` | string | 否 | 模式：`summarize`（总结）、`ask`（提问）、`selected`（划词提问） |
+| `base_url` | string | 否 | AI 服务地址 |
+| `api_key` | string | 否 | AI API Key |
+| `model` | string | 否 | 模型名称 |
 
 **SSE 响应格式**：
 
+首帧（包含历史）：
 ```json
-data: {"chat_id":"uuid","content":"思考中","status":true}
-data: {"chat_id":"uuid","content":"这是回答内容...","status":true}
-data: {"chat_id":"uuid","content":"","status":true,"message":"done"}
+data: {"agent_id":0,"chat_id":"uuid","history":[{"role":"user","content":"你好"}],"status":true}
 ```
 
-- `chat_id`：传入的 `chat_id` 原样返回
-- 流式输出中 `content` 为 **增量文本**（非完整内容拼接）
-- 最后一个事件 `message` = `"done"` 表示流结束
-- 错误时：`{"chat_id":"uuid","content":"错误信息","status":false}`
+流式块：
+```json
+data: {"agent_id":0,"chat_id":"uuid","content":"这是回答内容...","status":true}
+```
 
-**注意**：该接口不使用数据库中的 session 表，问答历史存储在 Redis（key: `session_<chatId>`）。
+完成帧：
+```json
+data: {"agent_id":0,"chat_id":"uuid","content":"","status":true,"message":"done"}
+```
+
+错误帧：
+```json
+data: {"agent_id":0,"chat_id":"uuid","content":"错误信息","status":false}
+```
+
+**注意**：问答历史存储在 Redis（key: `session_<chatId>`）。

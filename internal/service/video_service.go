@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math/rand"
 	"os"
 	"os/exec"
@@ -40,6 +41,7 @@ func (vs *VideoService) Create(ctx context.Context, userId uint, vReq request.Vi
 		ForbidComment: vReq.ForbidComment,
 		ForbidShare:   vReq.ForbidShare,
 		Status:        "published",
+		Type:          "video",
 	}
 	err := global.GetDB().Create(&video).Error
 	return video, err
@@ -111,16 +113,6 @@ func (vs *VideoService) Merge(ctx context.Context, uploadId string) error {
 		return err
 	}
 
-	var videoData []byte
-	for i := int64(0); i < session.TotalChunks; i++ {
-		chunkData, err := os.ReadFile(filepath.Join(chunkDir, strconv.Itoa(int(i))))
-		if err != nil {
-			vs.finishSessionRedis(ctx, uploadId, status)
-			return err
-		}
-		videoData = append(videoData, chunkData...)
-	}
-
 	if err := os.MkdirAll(constant.UploadVideoBaseDir, os.ModePerm); err != nil {
 		vs.finishSessionRedis(ctx, uploadId, status)
 		return err
@@ -133,10 +125,33 @@ func (vs *VideoService) Merge(ctx context.Context, uploadId string) error {
 	}
 
 	videoPath := filepath.Join(constant.UploadVideoBaseDir, fmt.Sprintf("%d.mp4", video.ID))
-	if err := os.WriteFile(videoPath, videoData, 0644); err != nil {
+	outFile, err := os.Create(videoPath)
+	if err != nil {
 		vs.finishSessionRedis(ctx, uploadId, status)
 		return err
 	}
+
+	for i := int64(0); i < session.TotalChunks; i++ {
+		chunkPath := filepath.Join(chunkDir, strconv.Itoa(int(i)))
+		chunkFile, err := os.Open(chunkPath)
+		if err != nil {
+			outFile.Close()
+			os.Remove(videoPath)
+			vs.finishSessionRedis(ctx, uploadId, status)
+			return err
+		}
+		if _, err := io.Copy(outFile, chunkFile); err != nil {
+			chunkFile.Close()
+			outFile.Close()
+			os.Remove(videoPath)
+			vs.finishSessionRedis(ctx, uploadId, status)
+			return err
+		}
+		chunkFile.Close()
+	}
+	outFile.Close()
+
+	os.RemoveAll(chunkDir)
 
 	streamUrl := fmt.Sprintf("/api/video/%d/stream", video.ID)
 	coverUrl := ""
@@ -242,7 +257,7 @@ func (vs *VideoService) GetVideoById(id uint, viewerId uint) (*response.VideoDet
 func (vs *VideoService) GetAllVideos(page, pageSize int, viewerId uint) (response.VideoList, error) {
 	var videos []entity.Video
 	var total int64
-	db := global.GetDB().Model(&entity.Video{})
+	db := global.GetDB().Model(&entity.Video{}).Where("type = ?", "video")
 	if viewerId == 0 {
 		db = db.Where("public = ?", true)
 	}
@@ -274,7 +289,7 @@ func (vs *VideoService) GetAllVideos(page, pageSize int, viewerId uint) (respons
 func (vs *VideoService) GetVideosByUserId(userId uint, page, pageSize int, viewerId uint) (response.VideoList, error) {
 	var videos []entity.Video
 	var total int64
-	db := global.GetDB().Model(&entity.Video{}).Where("user_id = ?", userId)
+	db := global.GetDB().Model(&entity.Video{}).Where("user_id = ? AND type = ?", userId, "video")
 	if viewerId == 0 || viewerId != userId {
 		db = db.Where("public = ?", true)
 	}
@@ -306,7 +321,7 @@ func (vs *VideoService) GetVideosByUserId(userId uint, page, pageSize int, viewe
 func (vs *VideoService) GetVideosByCategory(category string, page, pageSize int, viewerId uint) (response.VideoList, error) {
 	var videos []entity.Video
 	var total int64
-	db := global.GetDB().Model(&entity.Video{}).Where("category = ?", category)
+	db := global.GetDB().Model(&entity.Video{}).Where("category = ? AND type = ?", category, "video")
 	if viewerId == 0 {
 		db = db.Where("public = ?", true)
 	}
@@ -340,7 +355,7 @@ func (vs *VideoService) SearchVideo(req *request.VideoSearchRequest, page, pageS
 	var total int64
 	qKeyword := "%" + req.Keyword + "%"
 
-	db := global.GetDB().Model(&entity.Video{}).Where("title ILIKE ? OR description ILIKE ?", qKeyword, qKeyword)
+	db := global.GetDB().Model(&entity.Video{}).Where("(title ILIKE ? OR description ILIKE ?) AND type = ?", qKeyword, qKeyword, "video")
 	if viewerId == 0 {
 		db = db.Where("public = ?", true)
 	}

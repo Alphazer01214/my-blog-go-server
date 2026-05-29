@@ -399,3 +399,32 @@ func (pa *PostApi) Ask(c *gin.Context) {
 		"message": "done",
 	})
 }
+
+func (pa *PostApi) GetFavorites(c *gin.Context) {
+	cl, err := Authorize(c)
+	if err != nil {
+		response.ErrorWithMsg(c, err.Error())
+		return
+	}
+
+	var req request.PostFavoriteListRequest
+	if err := c.ShouldBindQuery(&req); err != nil {
+		response.ErrorWithMsg(c, err.Error())
+		return
+	}
+
+	if req.Page <= 0 {
+		req.Page = 1
+	}
+	if req.PageSize <= 0 {
+		req.PageSize = 20
+	}
+
+	favorites, err := postService.GetFavoritesByUserId(cl.UserId, req.Page, req.PageSize)
+	if err != nil {
+		response.ErrorWithMsg(c, err.Error())
+		return
+	}
+
+	response.SuccessWithDetail(c, favorites, "query favorites success")
+}

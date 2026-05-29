@@ -81,6 +81,9 @@ type Video struct {
 	UserId  uint `json:"user_id"`
 	EnvInfo `json:"env"`
 
+	// Type 区分是视频还是普通文件: "video" 或 "file"
+	Type string `gorm:"type:varchar(16);default:'video'" json:"type"`
+
 	Tags     datatypes.JSON `json:"tags"`
 	Category string         `json:"category"`
 

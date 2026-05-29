@@ -361,3 +361,56 @@ func (ps *PostService) toPostDetail(post *entity.Post, author *response.UserInfo
 
 	return pd
 }
+
+func (ps *PostService) GetFavoritesByUserId(userId uint, page, pageSize int) (response.PostList, error) {
+	var actions []entity.Action
+	var total int64
+
+	db := global.GetDB().Model(&entity.Action{}).Where(
+		"user_id = ? AND target_type = ? AND action_type = ?",
+		userId, constant.TargetPost, constant.ActionFavorite,
+	)
+
+	if err := db.Count(&total).Error; err != nil {
+		return response.PostList{}, err
+	}
+
+	offset := (page - 1) * pageSize
+	if err := db.Order("created_at desc").Offset(offset).Limit(pageSize).Find(&actions).Error; err != nil {
+		return response.PostList{}, err
+	}
+
+	var postIds []uint
+	for _, action := range actions {
+		postIds = append(postIds, action.TargetId)
+	}
+
+	var posts []entity.Post
+	if err := global.GetDB().Where("id IN ?", postIds).Find(&posts).Error; err != nil {
+		return response.PostList{}, err
+	}
+
+	postMap := make(map[uint]entity.Post)
+	for _, post := range posts {
+		postMap[post.ID] = post
+	}
+
+	items := make([]response.PostDetail, 0, len(actions))
+	for _, action := range actions {
+		if post, ok := postMap[action.TargetId]; ok {
+			author, err := Service.UserService.GetUserInfoById(post.UserId, 0)
+			if err != nil {
+				continue
+			}
+			pd := ps.toPostDetail(&post, &author, userId)
+			items = append(items, *pd)
+		}
+	}
+
+	return response.PostList{
+		Items:    items,
+		Page:     page,
+		PageSize: pageSize,
+		Total:    total,
+	}, nil
+}

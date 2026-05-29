@@ -5,6 +5,7 @@ type TomoriStats struct {
 	PostCount    int64 `json:"post_count"`
 	CommentCount int64 `json:"comment_count"`
 	FileCount    int64 `json:"file_count"`
+	VideoCount   int64 `json:"video_count"`
 	AgentCount   int64 `json:"agent_count"`
 	ChatCount    int64 `json:"chat_count"`
 }

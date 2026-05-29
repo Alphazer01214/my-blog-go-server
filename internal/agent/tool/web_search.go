@@ -49,7 +49,7 @@ type baiduSearchReference struct {
 func (ws *WebSearch) Info(ctx context.Context) (*schema.ToolInfo, error) {
 	return &schema.ToolInfo{
 		Name: "web_search",
-		Desc: "当用户询问实时信息（如今天的股票行情、天气、最新新闻等）时，必须使用此工具进行搜索。",
+		Desc: "当用户询问实时信息（如今天的股票行情、天气、最新新闻等）时，必须使用此工具进行搜索。现在是" + time.Now().Format("2006-01-02 15:04:05"),
 		ParamsOneOf: schema.NewParamsOneOfByParams(
 			map[string]*schema.ParameterInfo{
 				"query": {
@@ -113,7 +113,7 @@ func (ws *WebSearch) InvokableRun(ctx context.Context, argumentsInJSON string, o
 		return "未找到相关结果", nil
 	}
 
-	var result string
+	var result string = "以下是搜索结果，请根据这些结果回答用户提问：\n"
 	for i, ref := range searchResp.References {
 		result += fmt.Sprintf("[%d] %s\n", i+1, ref.Title)
 		if ref.Content != "" {

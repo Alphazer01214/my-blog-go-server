@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"sync"
 	"time"
 
@@ -106,10 +105,24 @@ func (ai *AIService) QueryAgentById(ctx context.Context, userId uint, agentId ui
 	}
 	return agent, nil
 }
+
+func (ai *AIService) DeleteAgent(ctx context.Context, userId uint, agentId uint) error {
+	agent, err := ai.queryAgentById(ctx, agentId)
+	if err != nil {
+		return err
+	}
+	if agent == nil {
+		return errors.New("agent not found")
+	}
+	if agent.UserId != userId {
+		return errors.New("unauthorized")
+	}
+	return global.GetDB().WithContext(ctx).Delete(agent).Error
+}
 func (ai *AIService) GetChatHistory(ctx context.Context, userId uint, chatId string) []*schema.Message {
 	session, err := ai.loadChat(ctx, userId, chatId)
 	if err != nil || session == nil {
-		return nil
+		return []*schema.Message{}
 	}
 	var msgs []*schema.Message
 	for _, m := range session.ChatMessages {
@@ -164,8 +177,12 @@ func (ai *AIService) InvokeAgent(ctx context.Context, userId uint, agentId uint,
 			Message: "unauthorized: the agent's owner is not you",
 		}, errors.New("unauthorized")
 	}
+	usrPrompt := req.UsrPrompt
+	if usrPrompt == "" {
+		usrPrompt = " "
+	}
 	message := []*schema.Message{
-		schema.UserMessage(req.UsrPrompt),
+		schema.UserMessage(usrPrompt),
 	}
 	if req.SysPrompt != "" {
 		message = append(message, schema.SystemMessage(req.SysPrompt))
@@ -240,13 +257,19 @@ func (ai *AIService) StreamChat(ctx context.Context, userId uint, agentId uint, 
 	defer stream.Close()
 	res := ""
 	for {
+		if !agent.Activate {
+			// 没激活，把这个错误信息当作消息不保存地发出去
+			callback("agent not activated!")
+			callback("")
+			return nil
+		}
 		chunk, err := stream.Recv()
 		if errors.Is(err, io.EOF) {
 			// stream 到结尾，跳出
 			break
 		}
 		cm := entity.ChatMessage{
-			Role:     "model",
+			Role:     "assistant",
 			Content:  res,
 			Time:     time.Now().Unix(),
 			IsDone:   false,
@@ -268,6 +291,9 @@ func (ai *AIService) StreamChat(ctx context.Context, userId uint, agentId uint, 
 				ai.removeChatFromRedis(ctx, chatId)
 			}
 			return err
+		}
+		if chunk.Content == "" {
+			continue
 		}
 		res += chunk.Content
 		cm.Content = res
@@ -297,21 +323,6 @@ func (ai *AIService) StreamChat(ctx context.Context, userId uint, agentId uint, 
 }
 
 // TmpToolCallingStreamChat 临时的工具调用流式聊天，所有数据存redis
-//
-//	请求是 map，包括type ChatMessage struct {
-//		// Role: "user" | "model" | "tool"
-//		Role     string `json:"role"`
-//		Content  string `json:"content"`
-//		IsDone   bool   `json:"is_done"`
-//		IsError  bool   `json:"is_error"`
-//		ErrorMsg string `json:"error_msg,omitempty"`
-//		Time     int64  `json:"time"`
-//
-//		// Tool calling
-//		ToolCallId string     `json:"tool_call_id,omitempty"` // Role="tool" 时关联 tool call
-//		ToolCalls  []ToolCall `json:"tool_calls,omitempty"`   // Role="model" 时请求的工具调用
-//	}
-
 func (ai *AIService) TmpToolCallingStreamChat(ctx context.Context, userId uint, chatId string, req *request.TmpChatRequest, callback func(string) error) error {
 	session, err := ai.getSessionRedis(ctx, chatId)
 	if err != nil {
@@ -330,9 +341,13 @@ func (ai *AIService) TmpToolCallingStreamChat(ctx context.Context, userId uint, 
 	if err != nil {
 		return err
 	}
+	prompt := req.Prompt
+	if prompt == "" {
+		prompt = " "
+	}
 	ask := entity.ChatMessage{
 		Role:    "user",
-		Content: req.Prompt,
+		Content: prompt,
 		Time:    time.Now().Unix(),
 	}
 	answer := entity.ChatMessage{
@@ -341,51 +356,31 @@ func (ai *AIService) TmpToolCallingStreamChat(ctx context.Context, userId uint, 
 	}
 
 	// register tools
-	webSearchTool := tomori_tool.NewWebSearchTool(global.GetConfig().Tools.WebSearch.ApiKey)
-	searchPostTool := tomori_tool.NewSearchPostTool()
-	webSearchToolInfo, _ := webSearchTool.Info(ctx)
-	searchPostToolInfo, _ := searchPostTool.Info(ctx)
-
-	toolCallingChatModel, err := chatModel.WithTools([]*schema.ToolInfo{
-		webSearchToolInfo,
-		searchPostToolInfo,
-	})
-
+	tools, toolInfos, err := ai.registerTools(ctx)
 	if err != nil {
 		return err
 	}
 
-	toolCallingMessage := []*schema.Message{
-		schema.SystemMessage("根据用户问题，选择合适工具"),
-		schema.UserMessage(req.Prompt),
+	toolCallingChatModel, err := chatModel.WithTools(toolInfos)
+	if err != nil {
+		return err
 	}
 
-	//decisionNode := compose.InvokableLambda(func(ctx context.Context, input map[string]interface{}) (map[string]any, error) {
-	//	//sysPrompt := tomori_agent.ToolUsePrompt
-	//	sysPrompt := "判断这个问题是否需要使用联网搜索，如果是，请回复 true 否则回复 false，不允许回复其他内容"
-	//	usrPrompt := input["content"].(string)
-	//	res, err := ai.instantAsk(ctx, sysPrompt, usrPrompt)
-	//	if err != nil {
-	//		return nil, err
-	//	}
-	//	if strings.Contains(res, "true") {
-	//		input["use_tool"] = true
-	//		input["tool_call_id"] = uuid.New().String()
-	//	}
-	//	return input, nil
-	//})
-	//
-	//useWebSearchNode, err := compose.NewToolNode(ctx, &compose.ToolsNodeConfig{
-	//	Tools: []tool.BaseTool{
-	//		webSearchTool,
-	//	},
-	//})
+	// 构建包含历史的消息
+	toolCallingMessage := []*schema.Message{
+		schema.SystemMessage("根据用户问题，选择合适工具"),
+	}
+	// 加入 session 历史消息
+	for _, msg := range session.ChatMessages {
+		toolCallingMessage = append(toolCallingMessage, &schema.Message{
+			Role:    ai.toSchemaRole(msg.Role),
+			Content: msg.Content,
+		})
+	}
+	toolCallingMessage = append(toolCallingMessage, schema.UserMessage(prompt))
 
 	toolNode, err := compose.NewToolNode(ctx, &compose.ToolsNodeConfig{
-		Tools: []tool.BaseTool{
-			webSearchTool,
-			searchPostTool,
-		},
+		Tools: tools,
 	})
 
 	if err != nil {
@@ -407,7 +402,7 @@ func (ai *AIService) TmpToolCallingStreamChat(ctx context.Context, userId uint, 
 		// 7. ToolsNode 执行工具
 		toolResults, err := toolNode.Invoke(ctx, firstResp)
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
 
 		fmt.Printf("工具返回: %s\n\n", toolResults[0].Content)
@@ -417,13 +412,28 @@ func (ai *AIService) TmpToolCallingStreamChat(ctx context.Context, userId uint, 
 		toolCallingMessage = append(toolCallingMessage, toolResults...) // 工具执行结果
 
 		// 9. 第二轮：模型根据工具结果生成最终回答
-		finalResp, err := chatModel.Generate(ctx, toolCallingMessage)
+		//finalResp, err := chatModel.Generate(ctx, toolCallingMessage)
+		//if err != nil {
+		//	log.Fatal(err)
+		//}
+		finalRespStream, err := chatModel.Stream(ctx, toolCallingMessage)
 		if err != nil {
-			log.Fatal(err)
+			return err
+		}
+		for {
+			chunk, err := finalRespStream.Recv()
+			if err != nil {
+				break
+			}
+			if chunk.Content == "" {
+				continue
+			}
+			callback(chunk.Content)
+			answer.Content += chunk.Content
 		}
 
 		//fmt.Printf("助手: %s\n", finalResp.Content)
-		callback(finalResp.Content)
+		//callback(finalResp.Content)
 	} else {
 		//fmt.Printf("助手: %s\n", firstResp.Content)
 		callback(firstResp.Content)
@@ -435,7 +445,209 @@ func (ai *AIService) TmpToolCallingStreamChat(ctx context.Context, userId uint, 
 	return nil
 }
 
-func (ai *AIService) instantAsk(ctx context.Context, sysPrompt string, usrPrompt string) (string, error) {
+// registerTools 注册工具并返回工具列表和工具信息
+func (ai *AIService) registerTools(ctx context.Context) ([]tool.BaseTool, []*schema.ToolInfo, error) {
+	webSearchTool := tomori_tool.NewWebSearchTool(global.GetConfig().Tools.WebSearch.ApiKey)
+	searchPostTool := tomori_tool.NewSearchPostTool()
+	//tushareTool := tomori_tool.NewTushareTool(global.GetConfig().Tools.Tushare.ApiToken)
+
+	webSearchToolInfo, err := webSearchTool.Info(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("web search tool info error: %w", err)
+	}
+	searchPostToolInfo, err := searchPostTool.Info(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("search post tool info error: %w", err)
+	}
+	//tushareToolInfo, err := tushareTool.Info(ctx)
+	//if err != nil {
+	//	return nil, nil, fmt.Errorf("tushare tool info error: %w", err)
+	//}
+
+	tools := []tool.BaseTool{webSearchTool, searchPostTool}
+	toolInfos := []*schema.ToolInfo{webSearchToolInfo, searchPostToolInfo}
+	return tools, toolInfos, nil
+}
+
+// ToolCallingStreamChat 工具调用的流式chat，需要持久化存储
+func (ai *AIService) ToolCallingStreamChat(ctx context.Context, userId uint, chatId string, req *request.InvokeAgentRequest, callback func(string) error) error {
+	// read req first
+	//maxRetries := 3
+	agentId := req.AgentId
+	sysPrompt := req.SysPrompt
+	usrPrompt := req.UsrPrompt
+	session, err := ai.loadChat(ctx, userId, chatId)
+
+	if err != nil {
+		return err
+	}
+	session.UserId = userId
+	session.AgentId = agentId
+	session.UpdateAt = time.Now().Unix()
+	session.UUID = chatId
+	agent, err := ai.QueryAgentById(ctx, userId, agentId)
+	if err != nil {
+		return err
+	}
+	chatModel, err := ai.getEinoChatModel(ctx, agent)
+	if err != nil {
+		return err
+	}
+
+	// register tools
+	tools, toolInfos, err := ai.registerTools(ctx)
+	if err != nil {
+		return err
+	}
+	toolNode, err := compose.NewToolNode(ctx, &compose.ToolsNodeConfig{
+		Tools: tools,
+	})
+
+	toolCallingChatModel, err := chatModel.WithTools(toolInfos)
+
+	firstUsrChatMessage := entity.ChatMessage{
+		Role:    "user",
+		Content: usrPrompt,
+		Time:    time.Now().Unix(),
+	}
+	firstSysChatMessage := entity.ChatMessage{
+		Role:    "system",
+		Content: sysPrompt,
+		Time:    time.Now().Unix(),
+	}
+	prompt, err := ai.buildPrompt(ctx, session, firstSysChatMessage, firstUsrChatMessage)
+	if err != nil {
+		return err
+	}
+
+	// ReAct 循环：支持多轮工具调用
+	// maxToolRounds 最大工具调用轮数，防止无限循环
+	const maxToolRounds = 5
+	reactMessages := make([]*schema.Message, len(prompt))
+	copy(reactMessages, prompt)
+	toolCallMessages := make([]entity.ChatMessage, 0) // 记录工具调用过程
+	round := 0
+
+	for round < maxToolRounds {
+		// LLM 生成响应
+		resp, err := toolCallingChatModel.Generate(ctx, reactMessages)
+		if err != nil {
+			fmt.Println(err)
+			return err
+		}
+
+		// 如果没有工具调用，结束循环
+		if len(resp.ToolCalls) == 0 {
+			// 将最终回答流式输出
+			finalRespChatMessage := entity.ChatMessage{
+				Role:    "assistant",
+				Time:    time.Now().Unix(),
+				Content: "",
+			}
+			if resp.Content != "" {
+				// 如果 Generate 已经有内容，直接使用
+				callback(resp.Content)
+				finalRespChatMessage.Content = resp.Content
+			} else {
+				// 流式输出
+				finalRespStream, err := chatModel.Stream(ctx, reactMessages)
+				if err != nil {
+					return err
+				}
+				defer finalRespStream.Close()
+				for {
+					chunk, err := finalRespStream.Recv()
+					if err != nil {
+						break
+					}
+					if chunk.Content == "" {
+						continue
+					}
+					finalRespChatMessage.Content += chunk.Content
+					callback(chunk.Content)
+				}
+			}
+
+			// 保存到 session
+			allMessages := append([]entity.ChatMessage{firstUsrChatMessage}, toolCallMessages...)
+			allMessages = append([]entity.ChatMessage{firstUsrChatMessage}, finalRespChatMessage)
+			session.ChatMessages = append(session.ChatMessages, allMessages...)
+			break
+		}
+
+		// 有工具调用，记录工具调用信息
+		toolCallChatMessage := entity.ChatMessage{
+			Role:    "assistant",
+			Time:    time.Now().Unix(),
+			Content: "",
+		}
+		for _, toolCall := range resp.ToolCalls {
+			toolCallChatMessage.Content += fmt.Sprintf("\n模型决定调用工具%v, 参数为%v\n", toolCall.Function.Name, toolCall.Function.Arguments)
+		}
+		callback(toolCallChatMessage.Content)
+		toolCallMessages = append(toolCallMessages, toolCallChatMessage)
+
+		// 执行工具
+		toolResp, err := toolNode.Invoke(ctx, resp)
+		//toolResp = append(toolResp, prompt[len(prompt)-1])
+		if err != nil {
+			return err
+		}
+
+		// 处理工具返回结果，没必要，不然篇幅太大
+		//for _, tr := range toolResp {
+		//	if tr.Content != "" {
+		//		callback(tr.Content)
+		//	}
+		//}
+
+		// 将工具调用和结果追加到消息历史，继续循环
+		reactMessages = append(reactMessages, resp)
+		reactMessages = append(reactMessages, toolResp...)
+
+		round++
+	}
+
+	// 如果循环结束仍未生成最终回答（达到最大轮数）
+	if round >= maxToolRounds {
+		callback("\n已达到最大工具调用轮数，生成最终回答...\n")
+		finalRespStream, err := chatModel.Stream(ctx, reactMessages)
+		if err != nil {
+			return err
+		}
+		defer finalRespStream.Close()
+		finalRespChatMessage := entity.ChatMessage{
+			Role:    "assistant",
+			Time:    time.Now().Unix(),
+			Content: "",
+		}
+		for {
+			chunk, err := finalRespStream.Recv()
+			if err != nil {
+				break
+			}
+			if chunk.Content == "" {
+				continue
+			}
+			finalRespChatMessage.Content += chunk.Content
+			callback(chunk.Content)
+		}
+		allMessages := append([]entity.ChatMessage{firstUsrChatMessage}, toolCallMessages...)
+		allMessages = append(allMessages, finalRespChatMessage)
+		session.ChatMessages = append(session.ChatMessages, allMessages...)
+	}
+
+	ai.saveSessionAsync(userId, chatId, session)
+	return nil
+}
+
+func (ai *AIService) InstantAsk(ctx context.Context, sysPrompt string, usrPrompt string) (string, error) {
+	if usrPrompt == "" {
+		usrPrompt = " "
+	}
+	if sysPrompt == "" {
+		sysPrompt = " "
+	}
 	chatModel, err := openai.NewChatModel(ctx, &openai.ChatModelConfig{
 		BaseURL: global.GetConfig().LLM.BaseUrl,
 		APIKey:  global.GetConfig().LLM.ApiKey,
@@ -454,40 +666,6 @@ func (ai *AIService) instantAsk(ctx context.Context, sysPrompt string, usrPrompt
 		return "", err
 	}
 	return res.Content, nil
-}
-
-// buildToolMessages 将 session 中的消息和新的 prompt 转为 schema.Message，保留 tool 调用信息
-func (ai *AIService) buildToolMessages(session *entity.Session, newPrompt string) []*schema.Message {
-	var msgs []*schema.Message
-	for _, m := range session.ChatMessages {
-		msg := &schema.Message{
-			Content: m.Content,
-		}
-		switch m.Role {
-		case "user":
-			msg.Role = schema.User
-		case "model":
-			msg.Role = schema.Assistant
-			if len(m.ToolCalls) > 0 {
-				for _, tc := range m.ToolCalls {
-					msg.ToolCalls = append(msg.ToolCalls, schema.ToolCall{
-						ID:   tc.Id,
-						Type: "function",
-						Function: schema.FunctionCall{
-							Name:      tc.Name,
-							Arguments: tc.Arguments,
-						},
-					})
-				}
-			}
-		case "tool":
-			msg.Role = schema.Tool
-			msg.ToolCallID = m.ToolCallId
-		}
-		msgs = append(msgs, msg)
-	}
-	msgs = append(msgs, schema.UserMessage(newPrompt))
-	return msgs
 }
 
 func (ai *AIService) saveSessionRedis(ctx context.Context, chatId string, session *entity.Session) error {
@@ -533,6 +711,21 @@ func (ai *AIService) getChatFromRedis(ctx context.Context, chatId string) (*enti
 	}
 
 	return &chatMessage, true
+}
+
+func (ai *AIService) toSchemaRole(role string) schema.RoleType {
+	switch role {
+	case "user":
+		return schema.User
+	case "system":
+		return schema.System
+	case "assistant":
+		return schema.Assistant
+	case "tool":
+		return schema.Tool
+	default:
+		return "user"
+	}
 }
 
 func (ai *AIService) getLatestChatFromRedis(ctx context.Context, chatId string, callback func(string) error) *entity.ChatMessage {
@@ -611,26 +804,30 @@ func (ai *AIService) getEinoChatModel(ctx context.Context, agent *entity.Agent) 
 	return m, nil
 }
 
-func (ai *AIService) buildPrompt(ctx context.Context, session *entity.Session, newMessage entity.ChatMessage) ([]*schema.Message, error) {
+func (ai *AIService) buildPrompt(ctx context.Context, session *entity.Session, newMessages ...entity.ChatMessage) ([]*schema.Message, error) {
 	var msg []*schema.Message
 	history := session.ChatMessages
 	for _, h := range history {
-		var rt schema.RoleType
-		role := h.Role
-		if role == "model" {
-			rt = schema.Assistant
-		} else {
-			rt = schema.User
+		content := h.Content
+		if content == "" {
+			content = " "
 		}
 		msg = append(msg, &schema.Message{
-			Role:    rt,
-			Content: h.Content,
+			Role:    ai.toSchemaRole(h.Role),
+			Content: content,
 		})
 	}
-	msg = append(msg, &schema.Message{
-		Role:    schema.User,
-		Content: newMessage.Content,
-	})
+
+	for _, newMessage := range newMessages {
+		newContent := newMessage.Content
+		if newContent == "" {
+			newContent = " "
+		}
+		msg = append(msg, &schema.Message{
+			Role:    ai.toSchemaRole(newMessage.Role),
+			Content: newContent,
+		})
+	}
 
 	return msg, nil
 }
@@ -654,7 +851,7 @@ func (ai *AIService) loadChat(ctx context.Context, userId uint, chatId string) (
 		return &entity.Session{}, nil
 	}
 	if err != nil {
-		return nil, err
+		return &entity.Session{}, err
 	}
 
 	var messages []entity.ChatMessage
@@ -740,4 +937,20 @@ func (ai *AIService) saveSessionAsync(userId uint, chatId string, session *entit
 
 func float32Ptr(v float32) *float32 {
 	return &v
+}
+
+func (ai *AIService) DeleteChatSession(ctx context.Context, userId uint, chatId string) error {
+	result := global.GetDB().WithContext(ctx).Where("uuid = ? AND user_id = ?", chatId, userId).Delete(&entity.ChatSession{})
+	if result.RowsAffected == 0 {
+		return errors.New("chat session not found")
+	}
+	return result.Error
+}
+
+func (ai *AIService) UpdateChatSession(ctx context.Context, userId uint, chatId string, title string) error {
+	result := global.GetDB().WithContext(ctx).Model(&entity.ChatSession{}).Where("uuid = ? AND user_id = ?", chatId, userId).Update("title", title)
+	if result.RowsAffected == 0 {
+		return errors.New("chat session not found")
+	}
+	return result.Error
 }

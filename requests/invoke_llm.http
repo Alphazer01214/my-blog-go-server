@@ -3,8 +3,6 @@
 ### 然后把返回的 `access-token` 和 `refresh-token` 放到下面的变量里。
 
 @baseUrl = http://localhost:2333
-@accessToken = your_access_token
-@refreshToken = your_refresh_token
 
 ### ============================================================
 ### Agent 管理接口
@@ -13,7 +11,6 @@
 ### create agent
 POST {{baseUrl}}/api/create_agent
 Content-Type: application/json
-Cookie: access-token={{accessToken}}; refresh-token={{refreshToken}}
 
 {
   "agent_name": "tomorin",
@@ -26,7 +23,6 @@ Cookie: access-token={{accessToken}}; refresh-token={{refreshToken}}
 ### update agent
 POST {{baseUrl}}/api/update_agent
 Content-Type: application/json
-Cookie: access-token={{accessToken}}; refresh-token={{refreshToken}}
 
 {
   "agent_id": 1,
@@ -42,15 +38,11 @@ Cookie: access-token={{accessToken}}; refresh-token={{refreshToken}}
 
 ### list agents (canonical)
 GET {{baseUrl}}/api/agents
-Cookie: access-token={{accessToken}}; refresh-token={{refreshToken}}
 
 ### list agents (compat)
 GET {{baseUrl}}/api/agent/list
-Cookie: access-token={{accessToken}}; refresh-token={{refreshToken}}
-
 ### query one agent
 GET {{baseUrl}}/api/agent/1
-Cookie: access-token={{accessToken}}; refresh-token={{refreshToken}}
 
 ### ============================================================
 ### LLM 调用接口
@@ -59,7 +51,6 @@ Cookie: access-token={{accessToken}}; refresh-token={{refreshToken}}
 ### invoke agent (non-stream)
 POST {{baseUrl}}/api/invoke_agent
 Content-Type: application/json
-Cookie: access-token={{accessToken}}; refresh-token={{refreshToken}}
 
 {
   "agent_id": 1,
@@ -75,7 +66,6 @@ Cookie: access-token={{accessToken}}; refresh-token={{refreshToken}}
 ### chat (SSE stream)
 POST {{baseUrl}}/api/chat
 Content-Type: application/json
-Cookie: access-token={{accessToken}}; refresh-token={{refreshToken}}
 
 {
   "agent_id": 1,
@@ -93,7 +83,6 @@ Cookie: access-token={{accessToken}}; refresh-token={{refreshToken}}
 @chatId = paste_chat_id_here
 POST {{baseUrl}}/api/chat?chat_id={{chatId}}
 Content-Type: application/json
-Cookie: access-token={{accessToken}}; refresh-token={{refreshToken}}
 
 {
   "agent_id": 1,
@@ -112,8 +101,6 @@ Cookie: access-token={{accessToken}}; refresh-token={{refreshToken}}
 
 ### list chat sessions (with pagination)
 GET {{baseUrl}}/api/chats?page=1&page_size=20
-Cookie: access-token={{accessToken}}; refresh-token={{refreshToken}}
 
 ### get chat session
 GET {{baseUrl}}/api/chat/{{chatId}}
-Cookie: access-token={{accessToken}}; refresh-token={{refreshToken}}

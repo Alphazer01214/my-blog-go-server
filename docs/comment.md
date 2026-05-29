@@ -4,142 +4,212 @@
 
 | 端点 | 方法 | 说明 | 是否需要登录 |
 |------|------|------|------------|
-| `/api/comment/create` | POST | 创建评论 | 是 |
-| `/api/comment/:id` | GET | 获取评论详情 | 否 |
+| `/api/comment` | POST | 创建评论 | 是 |
 | `/api/comment/:id` | DELETE | 删除评论 | 是 |
-| `/api/comment/list` | GET | 获取评论列表（支持树形） | 否 |
-| `/api/comment/:id/reply` | POST | 回复评论 | 是 |
-| `/api/comment/:id/interact` | POST | 点赞/点踩评论 | 是 |
-| `/api/user/comments` | GET | 获取当前用户评论列表 | 是 |
+| `/api/post/:id/comments` | GET | 获取帖子评论列表 | 是 |
+| `/api/video/:id/comments` | GET | 获取视频评论列表 | 是 |
+| `/api/comment/like` | POST | 点赞/取消点赞评论 | 是 |
+| `/api/comment/dislike` | POST | 点踩/取消点踩评论 | 是 |
 
 ---
 
 ## 端点详情
 
-### POST /api/comment/create
+### POST /api/comment
 
-创建新评论。
+创建新评论。需要登录。
 
 **Request Body**：
 
 ```json
 {
+  "env": {
+    "ipv4": "192.168.1.1",
+    "ipv6": "",
+    "os": "Windows 11",
+    "device_info": "Chrome 120"
+  },
   "post_id": 1,
-  "parent_id": 0,
-  "content": "评论内容 (最多 10000 字，至少 1 字)"
+  "target_type": "post",
+  "target_id": 1,
+  "content": "评论内容 (最多 10000 字，至少 1 字)",
+  "root_comment_id": 0,
+  "parent_comment_id": 0
 }
 ```
 
-- `parent_id`：`0`=顶级评论，非零=回复某条评论
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `env` | object | 否 | 环境信息 |
+| `post_id` | uint | 否 | 关联帖子 ID |
+| `target_type` | string | 是 | 目标类型：`post`、`video` |
+| `target_id` | uint | 是 | 目标 ID（帖子或视频 ID） |
+| `content` | string | 是 | 评论内容 |
+| `root_comment_id` | uint | 否 | 根评论 ID（0=顶级评论） |
+| `parent_comment_id` | uint | 否 | 父评论 ID（0=顶级评论） |
+
+- `root_comment_id`：顶级评论为 `0`，回复时传入顶级评论 ID
+- `parent_comment_id`：顶级评论为 `0`，回复时传入被回复的评论 ID
 - 如需引用其他用户，可在 `content` 中手动包含 `@username`
 
 **Response**：
 
 ```json
 {
+  "code": 0,
   "data": {
-    "id": 1
-  }
+    "comment_id": 1,
+    "user_id": 1,
+    "target_id": 1,
+    "target_type": "post",
+    "root_comment_id": 0,
+    "parent_comment_id": 0,
+    "content": "评论内容",
+    "created_at": "2024-01-01T00:00:00Z",
+    "updated_at": "2024-01-01T00:00:00Z",
+    "env": { ... },
+    "author": {
+      "user_id": 1,
+      "username": "testuser",
+      "avatar": ""
+    },
+    "like_count": 0,
+    "dislike_count": 0,
+    "reply_count": 0,
+    "is_liked": false,
+    "is_disliked": false,
+    "reply_comments": []
+  },
+  "msg": "Success"
 }
 ```
 
-### GET /api/comment/:id
+### DELETE /api/comment/:id
 
-获取单条评论详情。
+删除评论。仅评论作者可操作。需要登录。
 
 **Response**：
 
 ```json
 {
-  "data": {
-    "id": 1,
-    "post_id": 1,
-    "parent_id": 0,
-    "content": "评论内容",
-    "user_info": {
-      "id": 1,
-      "username": "testuser",
-      "avatar_path": ""
-    },
-    "like_count": 3,
-    "reply_count": 5,
-    "is_liked": false,
-    "created_at": "2024-01-01T00:00:00Z",
-    "updated_at": "2024-01-01T00:00:00Z"
-  }
+  "code": 0,
+  "data": {},
+  "msg": "Success"
 }
 ```
 
-- `is_liked`：未登录或未操作时返回 `false`
-- `reply_count`：该评论的回复数量（仅统计直接子评论，非全树）
+---
 
-### DELETE /api/comment/:id
+## 评论列表
 
-删除评论。仅评论作者可操作。
+### GET /api/post/:id/comments
 
-### GET /api/comment/list
-
-获取指定帖子的评论列表。
+获取指定帖子的评论列表。需要登录。
 
 **Query 参数**：
 
 | 参数 | 类型 | 必填 | 默认 | 说明 |
 |------|------|------|------|------|
-| `post_id` | int | 是 | | 帖子 ID |
 | `page` | int | 否 | 1 | |
 | `page_size` | int | 否 | 20 | |
 
-**响应格式为树形结构**：顶级评论的 `children` 数组包含直接回复。
-
 **Response**：
 
 ```json
 {
+  "code": 0,
   "data": {
     "items": [
       {
-        "id": 1,
-        "parent_id": 0,
+        "comment_id": 1,
+        "user_id": 1,
+        "target_id": 1,
+        "target_type": "post",
+        "root_comment_id": 0,
+        "parent_comment_id": 0,
         "content": "顶级评论",
-        "user_info": { "id": 1, "username": "user1", "avatar_path": "" },
+        "created_at": "2024-01-01T00:00:00Z",
+        "updated_at": "2024-01-01T00:00:00Z",
+        "env": { ... },
+        "author": {
+          "user_id": 1,
+          "username": "user1",
+          "avatar": ""
+        },
         "like_count": 5,
+        "dislike_count": 0,
         "reply_count": 2,
         "is_liked": false,
-        "children": [
+        "is_disliked": false,
+        "reply_comments": [
           {
-            "id": 2,
-            "parent_id": 1,
+            "comment_id": 2,
+            "user_id": 2,
+            "target_id": 1,
+            "target_type": "post",
+            "root_comment_id": 1,
+            "parent_comment_id": 1,
             "content": "回复内容",
-            "user_info": { "id": 2, "username": "user2", "avatar_path": "" },
-            "reply_to": { "id": 1, "username": "user1" },
+            "created_at": "2024-01-01T00:01:00Z",
+            "updated_at": "2024-01-01T00:01:00Z",
+            "env": { ... },
+            "author": {
+              "user_id": 2,
+              "username": "user2",
+              "avatar": ""
+            },
             "like_count": 1,
+            "dislike_count": 0,
             "reply_count": 0,
-            "is_liked": false
+            "is_liked": false,
+            "is_disliked": false,
+            "reply_comments": []
           }
-        ],
-        "created_at": "2024-01-01T00:00:00Z",
-        "updated_at": "2024-01-01T00:00:00Z"
+        ]
       }
     ],
+    "page": 1,
+    "page_size": 20,
     "total": 10
-  }
+  },
+  "msg": "Success"
 }
 ```
 
-- 顶级评论的 `parent_id` 为 `0`
-- 子评论的 `parent_id` 指向被回复的评论 ID
-- `reply_to` 字段仅子评论有，包含被回复者的 `id` 和 `username`
-- `children` 仅**下一级**回复（非全树展开）
+| 字段 | 说明 |
+|------|------|
+| `comment_id` | 评论 ID |
+| `user_id` | 评论者 ID |
+| `target_id` | 目标 ID |
+| `target_type` | 目标类型 |
+| `root_comment_id` | 根评论 ID（0=顶级） |
+| `parent_comment_id` | 父评论 ID（0=顶级） |
+| `content` | 评论内容 |
+| `author` | 作者信息（UserInfo 子集） |
+| `like_count` | 点赞数 |
+| `dislike_count` | 点踩数 |
+| `reply_count` | 直接子评论数 |
+| `is_liked` | 当前用户是否点赞 |
+| `is_disliked` | 当前用户是否点踩 |
+| `reply_comments` | 回复评论列表（仅下一级） |
 
-### POST /api/comment/:id/reply
+### GET /api/video/:id/comments
 
-回复指定评论。
+获取指定视频的评论列表。格式同上。
+
+---
+
+## 交互操作
+
+### POST /api/comment/like
+
+点赞或取消点赞评论（toggle 切换）。需要登录。
 
 **Request Body**：
 
 ```json
 {
-  "content": "回复内容"
+  "comment_id": 1
 }
 ```
 
@@ -147,49 +217,22 @@
 
 ```json
 {
-  "data": {
-    "id": 3
-  }
+  "code": 0,
+  "data": {},
+  "msg": "Success"
 }
 ```
 
-### POST /api/comment/:id/interact
+### POST /api/comment/dislike
 
-对评论进行交互操作。
+点踩或取消点踩评论（toggle 切换）。需要登录。
 
 **Request Body**：
 
 ```json
 {
-  "action_type": "like"
+  "comment_id": 1
 }
 ```
 
-| `action_type` | 说明 |
-|---------------|------|
-| `like` | 点赞（toggle） |
-| `dislike` | 点踩（toggle） |
-
-### GET /api/user/comments
-
-获取当前用户的所有评论列表。支持分页。
-
-**Response**：
-
-```json
-{
-  "data": {
-    "items": [
-      {
-        "id": 1,
-        "post_id": 1,
-        "content": "评论内容",
-        "post_title": "帖子标题",
-        "like_count": 3,
-        "created_at": "2024-01-01T00:00:00Z"
-      }
-    ],
-    "total": 10
-  }
-}
-```
+**Response**：同上。

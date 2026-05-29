@@ -19,3 +19,12 @@ type HistoryResponse struct {
 	Points []entity.HistoryPoint `json:"points"`
 }
 
+type ExchangeRateData struct {
+	Uptime string  `json:"uptime"`
+	From   string  `json:"from"`
+	To     string  `json:"to"`
+	Money  string  `json:"money"`
+	Result float64 `json:"result"`
+	Rate   float64 `json:"rate"`
+}
+

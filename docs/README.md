@@ -1,6 +1,6 @@
 # Trading Forum API 文档
 
-> 版本：1.0.0  
+> 版本：2.0.0  
 > 基础 URL：`http://<host>:2333/api`  
 > 内容类型：`application/json`（除非另有说明）
 
@@ -14,7 +14,7 @@
 | [用户](user.md) | 用户信息、资料修改、关注、隐私设置 |
 | [帖子](post.md) | 帖子 CRUD、搜索、AI 问答 |
 | [评论](comment.md) | 评论 CRUD、树形结构、点赞/点踩 |
-| [AI / Agent](ai.md) | Agent 管理、非流式调用、流式聊天 |
+| [AI / Agent](ai.md) | Agent CRUD、非流式调用、流式聊天、会话管理 |
 | [文件上传](upload.md) | 通用文件分块上传 |
 | [视频](video.md) | 视频上传、CRUD、流播放 |
 | [行情](market.md) | 市场指数实时/历史数据 |
@@ -91,16 +91,16 @@ Cache-Control: no-cache
 **事件格式**（每行以 `data: ` 开头，`\n\n` 结尾）：
 
 ```json
-data: {"chat_id":"uuid","content":"思考中","status":true}
-data: {"chat_id":"uuid","content":"文本块","status":true}
-data: {"chat_id":"uuid","content":"","status":true,"message":"done"}
+data: {"agent_id":1,"chat_id":"uuid","content":"思考中","status":true}
+data: {"agent_id":1,"chat_id":"uuid","content":"文本块","status":true}
+data: {"agent_id":1,"chat_id":"uuid","content":"","status":true,"message":"done"}
 ```
 
 **事件类型**：
 
 | 事件 | 说明 |
 |------|------|
-| 首帧（仅 `/api/chat`） | 携带 `history` 数组 |
+| 首帧 | 携带 `history` 数组 |
 | 流式块 | `content` 为增量文本 |
 | 完成帧 | `message` = `"done"` |
 | 错误帧 | `status` = `false` |
@@ -124,45 +124,25 @@ data: {"chat_id":"uuid","content":"","status":true,"message":"done"}
 
 ## 枚举常量
 
-### 用户角色
+### 用户角色（RoleType）
 
 | 值 | 说明 |
 |----|------|
+| `guest` | 访客（未注册） |
+| `evil` | 恶意用户（封禁） |
 | `normal_user` | 普通用户（默认） |
 | `vip` | VIP 用户 |
 | `moderator` | 版主 |
 | `takamatsu_tomori` | 超级管理员 |
-| `evil` | 恶意用户（封禁） |
-| `guest` | 访客（未注册） |
 
-### 交互行为（action_type）
+### 上传状态（UploadStatus）
 
 | 值 | 说明 |
 |----|------|
-| `like` | 点赞 |
-| `dislike` | 点踩 |
-| `favorite` | 收藏 |
-| `share` | 分享 |
-
-### 目标类型（target_type）
-
-| 值 | 说明 |
-|----|------|
-| `post` | 帖子 |
-| `comment` | 评论 |
-| `video` | 视频 |
-| `user` | 用户 |
-| `tag` | 标签 |
-
-### 上传状态
-
-| 值 | 说明 |
-|----|------|
-| `pending` | 初始化完成 |
-| `processing` | 上传中 |
-| `completed` | 已完成 |
-| `failed` | 失败 |
-| `canceled` | 已取消 |
+| 1 | Pending（初始化完成） |
+| 2 | Uploading（上传中） |
+| 3 | Completed（已完成） |
+| 4 | Aborted（已取消） |
 
 ### AI Provider
 
@@ -171,10 +151,14 @@ data: {"chat_id":"uuid","content":"","status":true,"message":"done"}
 | `openai` | OpenAI 兼容接口 |
 | `ollama` | Ollama 本地模型 |
 
-### Post Ask Mode
 
-| 值 | 说明 |
-|----|------|
-| `summarize` | 总结文章 |
-| `ask` | 对文章提问 |
-| `selected` | 划词提问 |
+
+
+
+## 设计风格要求
+
+   - 交易论坛风格 + 年轻化
+   - 文章内容渲染规范：
+     - Markdown 渲染（图片插入）
+     - 话题链接：#话题名 → 跳转搜索页
+     - 关键词识别：股票名称 → 跳转东方财富网

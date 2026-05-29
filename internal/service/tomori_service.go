@@ -1,9 +1,10 @@
 package service
 
 import (
+	"context"
 	"errors"
-	"fmt"
 
+	"blog.alphazer01214.top/internal/constant"
 	"blog.alphazer01214.top/internal/entity"
 	"blog.alphazer01214.top/internal/global"
 	"blog.alphazer01214.top/internal/response"
@@ -24,7 +25,8 @@ func (ts *TomoriService) GetStats() (*response.TomoriStats, error) {
 	db.Model(&entity.User{}).Count(&stats.UserCount)
 	db.Model(&entity.Post{}).Count(&stats.PostCount)
 	db.Model(&entity.Comment{}).Count(&stats.CommentCount)
-	db.Model(&entity.Video{}).Count(&stats.FileCount)
+	db.Model(&entity.Video{}).Where("type = ?", "file").Count(&stats.FileCount)
+	db.Model(&entity.Video{}).Where("type = ?", "video").Count(&stats.VideoCount)
 	db.Model(&entity.Agent{}).Count(&stats.AgentCount)
 	db.Model(&entity.ChatSession{}).Count(&stats.ChatCount)
 	return stats, nil
@@ -178,9 +180,17 @@ func (ts *TomoriService) ForceDeleteComment(commentId uint) error {
 			// 根评论：级联删除所有子回复
 			res := tx.Where("root_comment_id = ?", commentId).Delete(&entity.Comment{})
 			delCnt := res.RowsAffected
-			if err := tx.Model(&entity.Post{}).Where("id = ?", comment.TargetId).
-				Update("comment_count", gorm.Expr("GREATEST(comment_count - ?, 0)", delCnt)).Error; err != nil {
-				return err
+			if comment.TargetType == constant.TargetPost {
+				if err := tx.Model(&entity.Post{}).Where("id = ?", comment.TargetId).
+					Update("comment_count", gorm.Expr("GREATEST(comment_count - ?, 0)", delCnt)).Error; err != nil {
+					return err
+				}
+			}
+			if comment.TargetType == constant.TargetVideo {
+				if err := tx.Model(&entity.Video{}).Where("id = ?", comment.TargetId).
+					Update("comment_count", gorm.Expr("GREATEST(comment_count - ?, 0)", delCnt)).Error; err != nil {
+					return err
+				}
 			}
 			if err := tx.Delete(&entity.Comment{}, commentId).Error; err != nil {
 				return err
@@ -191,9 +201,17 @@ func (ts *TomoriService) ForceDeleteComment(commentId uint) error {
 		// 子回复：级联删除以该评论为父评论的所有子回复
 		res := tx.Where("parent_comment_id = ?", commentId).Delete(&entity.Comment{})
 		delCnt := res.RowsAffected
-		if err := tx.Model(&entity.Post{}).Where("id = ?", comment.TargetId).
-			Update("comment_count", gorm.Expr("GREATEST(comment_count - ?, 0)", delCnt)).Error; err != nil {
-			return err
+		if comment.TargetType == constant.TargetPost {
+			if err := tx.Model(&entity.Post{}).Where("id = ?", comment.TargetId).
+				Update("comment_count", gorm.Expr("GREATEST(comment_count - ?, 0)", delCnt)).Error; err != nil {
+				return err
+			}
+		}
+		if comment.TargetType == constant.TargetVideo {
+			if err := tx.Model(&entity.Video{}).Where("id = ?", comment.TargetId).
+				Update("comment_count", gorm.Expr("GREATEST(comment_count - ?, 0)", delCnt)).Error; err != nil {
+				return err
+			}
 		}
 		if err := tx.Model(&entity.Comment{}).Where("id = ?", comment.RootCommentId).
 			Update("reply_count", gorm.Expr("GREATEST(reply_count - ?, 0)", delCnt)).Error; err != nil {
@@ -219,7 +237,7 @@ func (ts *TomoriService) ForceDeleteComment(commentId uint) error {
 func (ts *TomoriService) ListAllFiles(page, pageSize int) (*response.FileList, error) {
 	var videos []entity.Video
 	var total int64
-	db := global.GetDB().Model(&entity.Video{})
+	db := global.GetDB().Model(&entity.Video{}).Where("type = ?", "file")
 	if err := db.Count(&total).Error; err != nil {
 		return nil, err
 	}
@@ -246,6 +264,41 @@ func (ts *TomoriService) ForceDeleteFile(id uint) error {
 		return err
 	}
 	return Service.FileService.DeleteFile(id, video.UserId)
+}
+
+// ======================== 视频管理 ========================
+
+// ListAllVideos 分页查询所有视频（含私密）
+func (ts *TomoriService) ListAllVideos(page, pageSize int) (*response.VideoList, error) {
+	var videos []entity.Video
+	var total int64
+	db := global.GetDB().Model(&entity.Video{}).Where("type = ?", "video")
+	if err := db.Count(&total).Error; err != nil {
+		return nil, err
+	}
+	offset := (page - 1) * pageSize
+	if err := db.Order("created_at desc").Offset(offset).Limit(pageSize).Find(&videos).Error; err != nil {
+		return nil, err
+	}
+	items := make([]response.VideoDetail, len(videos))
+	for i, v := range videos {
+		author, err := Service.UserService.GetUserInfoById(v.UserId, 0)
+		if err != nil {
+			author = response.UserInfo{}
+		}
+		items[i] = *Service.VideoService.toVideoDetail(&v, &author, 0)
+	}
+	return &response.VideoList{
+		Items:    items,
+		Page:     page,
+		PageSize: pageSize,
+		Total:    total,
+	}, nil
+}
+
+// ForceDeleteVideo 管理员删除任意视频，跳过作者校验
+func (ts *TomoriService) ForceDeleteVideo(id uint) error {
+	return Service.VideoService.DeleteById(id)
 }
 
 // ======================== AI 智能体管理 ========================
@@ -319,28 +372,46 @@ func (ts *TomoriService) ForceDeleteChat(chatUuid string) error {
 
 // ======================== 系统维护 ========================
 
-// ListBlacklist 分页查询 Token 黑名单
+// ListBlacklist 分页查询 Token 黑名单（从 Redis）
 func (ts *TomoriService) ListBlacklist(page, pageSize int) (*response.TomoriBlacklist, error) {
-	var tokens []entity.TokenBlacklist
-	var total int64
-	db := global.GetDB().Model(&entity.TokenBlacklist{})
-	if err := db.Count(&total).Error; err != nil {
-		return nil, err
+	ctx := context.Background()
+	var allKeys []string
+	var cursor uint64
+	for {
+		keys, nextCursor, err := global.GetRedis().Scan(ctx, cursor, "token:blacklist:*", 200).Result()
+		if err != nil {
+			return nil, err
+		}
+		allKeys = append(allKeys, keys...)
+		cursor = nextCursor
+		if cursor == 0 {
+			break
+		}
 	}
-	offset := (page - 1) * pageSize
-	if err := db.Order("created_at desc").Offset(offset).Limit(pageSize).Find(&tokens).Error; err != nil {
-		return nil, err
+
+	total := int64(len(allKeys))
+	start := (page - 1) * pageSize
+	end := start + pageSize
+	if start > len(allKeys) {
+		start = len(allKeys)
 	}
-	items := make([]response.TomoriBlacklistItem, len(tokens))
-	for i, t := range tokens {
-		tokenPreview := t.Token
-		if len(t.Token) > 20 {
-			tokenPreview = t.Token[:20] + "..."
+	if end > len(allKeys) {
+		end = len(allKeys)
+	}
+	pageKeys := allKeys[start:end]
+
+	items := make([]response.TomoriBlacklistItem, len(pageKeys))
+	for i, key := range pageKeys {
+		token := key[len("token:blacklist:"):]
+		ttl, _ := global.GetRedis().TTL(ctx, key).Result()
+		tokenPreview := token
+		if len(token) > 20 {
+			tokenPreview = token[:20] + "..."
 		}
 		items[i] = response.TomoriBlacklistItem{
-			ID:        fmt.Sprintf("%d", t.ID),
+			ID:        key,
 			Token:     tokenPreview,
-			CreatedAt: t.CreatedAt.Format("2006-01-02 15:04:05"),
+			CreatedAt: ttl.String(),
 		}
 	}
 	return &response.TomoriBlacklist{
@@ -351,7 +422,24 @@ func (ts *TomoriService) ListBlacklist(page, pageSize int) (*response.TomoriBlac
 	}, nil
 }
 
-// ClearBlacklist 清空 Token 黑名单
+// ClearBlacklist 清空 Token 黑名单（从 Redis）
 func (ts *TomoriService) ClearBlacklist() error {
-	return global.GetDB().Where("1 = 1").Delete(&entity.TokenBlacklist{}).Error
+	ctx := context.Background()
+	var cursor uint64
+	for {
+		keys, nextCursor, err := global.GetRedis().Scan(ctx, cursor, "token:blacklist:*", 200).Result()
+		if err != nil {
+			return err
+		}
+		if len(keys) > 0 {
+			if err := global.GetRedis().Del(ctx, keys...).Err(); err != nil {
+				return err
+			}
+		}
+		cursor = nextCursor
+		if cursor == 0 {
+			break
+		}
+	}
+	return nil
 }

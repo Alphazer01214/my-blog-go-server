@@ -52,8 +52,9 @@ type LLM struct {
 }
 
 type Market struct {
-	RefreshInterval int    `yaml:"refresh_interval" json:"refresh_interval"`
-	ApiUrl          string `yaml:"api_url" json:"api_url"`
+	RefreshInterval  int    `yaml:"refresh_interval" json:"refresh_interval"`
+	ApiUrl           string `yaml:"api_url" json:"api_url"`
+	ExchangeRateUrl  string `yaml:"exchange_rate_url" json:"exchange_rate_url"`
 }
 
 // WebSearchConfig 用于配置文件解析，避免循环导入
@@ -61,8 +62,13 @@ type WebSearchConfig struct {
 	ApiKey string `yaml:"api_key" json:"api_key"`
 }
 
+type TushareConfig struct {
+	ApiToken string `yaml:"api_token" json:"api_token"`
+}
+
 type Tools struct {
 	WebSearch WebSearchConfig `yaml:"web_search" json:"web_search"`
+	Tushare   TushareConfig   `yaml:"tushare" json:"tushare"`
 }
 
 type Config struct {

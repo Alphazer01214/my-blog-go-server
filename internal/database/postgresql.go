@@ -2,7 +2,6 @@ package database
 
 import (
 	"blog.alphazer01214.top/internal/config"
-	"blog.alphazer01214.top/internal/entity"
 	"blog.alphazer01214.top/internal/logs"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -21,8 +20,4 @@ func ConnectPostgres(dbCfg *config.Postgres) *gorm.DB {
 		panic(err)
 	}
 	return db
-}
-
-func ClearTokenBlacklist(db *gorm.DB) error {
-	return db.Where("1=1").Delete(&entity.TokenBlacklist{}).Error
 }

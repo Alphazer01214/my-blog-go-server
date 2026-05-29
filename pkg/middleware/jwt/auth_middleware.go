@@ -24,11 +24,22 @@ func JWTAuthMiddleware() gin.HandlerFunc {
 			// 在 blacklist
 			fmt.Printf("[JWT auth middleware] blacklist token: %v \n", refreshToken)
 			utils.RemoveRefreshTokenCookie(c)
+			utils.RemoveAccessTokenCookie(c)
 			response.ErrorAuth(c, "Invalid token")
 			c.Abort()
 			return
 		} else if err != nil {
 			response.ErrorWithMsg(c, err.Error())
+			c.Abort()
+			return
+		}
+
+		// 检查 accessToken 黑名单
+		if yes, err := utils.IsTokenBlacklisted(accessToken); err == nil && yes {
+			fmt.Printf("[JWT auth middleware] blacklist access token: %v \n", accessToken)
+			utils.RemoveRefreshTokenCookie(c)
+			utils.RemoveAccessTokenCookie(c)
+			response.ErrorAuth(c, "Invalid token")
 			c.Abort()
 			return
 		}
@@ -42,6 +53,7 @@ func JWTAuthMiddleware() gin.HandlerFunc {
 				refreshClaims, err := utils.ParseRefreshToken(refreshToken)
 				if err != nil {
 					utils.RemoveRefreshTokenCookie(c)
+					utils.RemoveAccessTokenCookie(c)
 					response.ErrorAuth(c, "Token invalid or expired")
 					c.Abort()
 					return
@@ -49,6 +61,7 @@ func JWTAuthMiddleware() gin.HandlerFunc {
 				user, err := service.Service.UserService.GetUserInfoById(refreshClaims.Id, 0)
 				if err != nil {
 					utils.RemoveRefreshTokenCookie(c)
+					utils.RemoveAccessTokenCookie(c)
 					response.ErrorAuth(c, "User not exists")
 					c.Abort()
 					return
@@ -61,6 +74,7 @@ func JWTAuthMiddleware() gin.HandlerFunc {
 				accessToken, err := utils.GenerateAccessTokenFromClaims(accessClaims)
 				if err != nil {
 					utils.RemoveRefreshTokenCookie(c)
+					utils.RemoveAccessTokenCookie(c)
 					response.ErrorAuth(c, "Token generation failed")
 					c.Abort()
 					return
@@ -74,6 +88,7 @@ func JWTAuthMiddleware() gin.HandlerFunc {
 			}
 
 			utils.RemoveRefreshTokenCookie(c)
+			utils.RemoveAccessTokenCookie(c)
 			response.ErrorAuth(c, "Authorization failed: "+err.Error())
 			c.Abort()
 			return

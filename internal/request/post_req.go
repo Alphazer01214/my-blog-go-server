@@ -49,3 +49,8 @@ type PostSearchRequest struct {
 	Keyword string `form:"keyword"`
 	Tag     string `form:"tag"`
 }
+
+type PostFavoriteListRequest struct {
+	Page     int `form:"page"`
+	PageSize int `form:"page_size"`
+}

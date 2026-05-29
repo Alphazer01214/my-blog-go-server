@@ -19,7 +19,7 @@ import (
 const (
 	marketLatestKey  = "market:latest"
 	marketHistoryKey = "market:history"
-	marketHistoryTTL = 24 * time.Hour
+	marketHistoryTTL = 10 * time.Minute
 	httpTimeout      = 8 * time.Second
 )
 
@@ -154,4 +154,127 @@ func (ms *MarketService) doFetch() *response.MarketResponse {
 		Asia:      raw.Data.Asia,
 		Other:     raw.Data.Other,
 	}
+}
+
+// exchangeRateAPIURL 获取汇率API地址
+func (ms *MarketService) exchangeRateAPIURL() string {
+	cfg := global.GetConfig()
+	if cfg.Market != nil && cfg.Market.ExchangeRateUrl != "" {
+		return cfg.Market.ExchangeRateUrl
+	}
+	return "https://cn.apihz.cn/api/jinrong/huilv.php"
+}
+
+// ExchangeRateRequest 汇率查询请求
+type ExchangeRateRequest struct {
+	From  string  `json:"from"`
+	To    string  `json:"to"`
+	Money float64 `json:"money"`
+}
+
+// FlexFloat64 兼容 JSON 字符串和数字的浮点类型
+type FlexFloat64 float64
+
+func (f *FlexFloat64) UnmarshalJSON(data []byte) error {
+	var num float64
+	if err := json.Unmarshal(data, &num); err == nil {
+		*f = FlexFloat64(num)
+		return nil
+	}
+	var str string
+	if err := json.Unmarshal(data, &str); err == nil {
+		num, err := strconv.ParseFloat(str, 64)
+		if err != nil {
+			return err
+		}
+		*f = FlexFloat64(num)
+		return nil
+	}
+	return fmt.Errorf("cannot unmarshal %s into float64", string(data))
+}
+
+// ExchangeRateResponse 汇率查询响应
+type ExchangeRateResponse struct {
+	Code   int         `json:"code"`
+	Msg    string      `json:"msg,omitempty"`
+	Uptime string      `json:"uptime,omitempty"`
+	Money  string      `json:"money,omitempty"`
+	From   string      `json:"from,omitempty"`
+	To     string      `json:"to,omitempty"`
+	Result FlexFloat64 `json:"result,omitempty"`
+	Rate   FlexFloat64 `json:"rate,omitempty"`
+}
+
+// FetchExchangeRate 查询汇率
+func (ms *MarketService) FetchExchangeRate(from, to string, money float64) (*response.ExchangeRateData, error) {
+	apiURL := fmt.Sprintf("%s?id=88888888&key=88888888&from=%s&to=%s&money=%.2f",
+		ms.exchangeRateAPIURL(), from, to, money)
+
+	client := &http.Client{Timeout: httpTimeout}
+	resp, err := client.Get(apiURL)
+	if err != nil {
+		return nil, fmt.Errorf("http get error: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read body error: %w", err)
+	}
+
+	var rateResp ExchangeRateResponse
+	if err := json.Unmarshal(body, &rateResp); err != nil {
+		return nil, fmt.Errorf("unmarshal error: %w", err)
+	}
+
+	if rateResp.Code != 200 {
+		return nil, fmt.Errorf("api error: %s", rateResp.Msg)
+	}
+
+	return &response.ExchangeRateData{
+		Uptime: rateResp.Uptime,
+		From:   rateResp.From,
+		To:     rateResp.To,
+		Money:  rateResp.Money,
+		Result: float64(rateResp.Result),
+		Rate:   float64(rateResp.Rate),
+	}, nil
+}
+
+// CurrencyCode 货币代码
+type CurrencyCode struct {
+	Code string `json:"code"`
+	Name string `json:"name"`
+}
+
+// FetchCurrencyCodes 获取货币代码大全
+func (ms *MarketService) FetchCurrencyCodes() ([]CurrencyCode, error) {
+	apiURL := fmt.Sprintf("%s?id=88888888&key=88888888", ms.exchangeRateAPIURL())
+
+	client := &http.Client{Timeout: httpTimeout}
+	resp, err := client.Get(apiURL)
+	if err != nil {
+		return nil, fmt.Errorf("http get error: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read body error: %w", err)
+	}
+
+	var result struct {
+		Code    int            `json:"code"`
+		Message string         `json:"message,omitempty"`
+		Data    []CurrencyCode `json:"data,omitempty"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("unmarshal error: %w", err)
+	}
+
+	if result.Code != 200 {
+		return nil, fmt.Errorf("api error: %s", result.Message)
+	}
+
+	return result.Data, nil
 }
