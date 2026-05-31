@@ -24,6 +24,12 @@ type Postgres struct {
 	User     string `yaml:"user" json:"user"`
 	Password string `yaml:"password" json:"password"`
 	Name     string `yaml:"name" json:"name"`
+
+	// 连接池配置
+	MaxOpenConns    int `yaml:"max_open_conns" json:"max_open_conns"`
+	MaxIdleConns    int `yaml:"max_idle_conns" json:"max_idle_conns"`
+	ConnMaxLifetime int `yaml:"conn_max_lifetime" json:"conn_max_lifetime"` // 秒
+	ConnMaxIdleTime int `yaml:"conn_max_idle_time" json:"conn_max_idle_time"` // 秒
 }
 
 type Redis struct {

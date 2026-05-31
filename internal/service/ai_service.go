@@ -449,7 +449,7 @@ func (ai *AIService) TmpToolCallingStreamChat(ctx context.Context, userId uint, 
 func (ai *AIService) registerTools(ctx context.Context) ([]tool.BaseTool, []*schema.ToolInfo, error) {
 	webSearchTool := tomori_tool.NewWebSearchTool(global.GetConfig().Tools.WebSearch.ApiKey)
 	searchPostTool := tomori_tool.NewSearchPostTool()
-	//tushareTool := tomori_tool.NewTushareTool(global.GetConfig().Tools.Tushare.ApiToken)
+	tushareTool := tomori_tool.NewTushareTool(global.GetConfig().Tools.Tushare.ApiToken)
 
 	webSearchToolInfo, err := webSearchTool.Info(ctx)
 	if err != nil {
@@ -459,13 +459,13 @@ func (ai *AIService) registerTools(ctx context.Context) ([]tool.BaseTool, []*sch
 	if err != nil {
 		return nil, nil, fmt.Errorf("search post tool info error: %w", err)
 	}
-	//tushareToolInfo, err := tushareTool.Info(ctx)
-	//if err != nil {
-	//	return nil, nil, fmt.Errorf("tushare tool info error: %w", err)
-	//}
+	tushareToolInfo, err := tushareTool.Info(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("tushare tool info error: %w", err)
+	}
 
-	tools := []tool.BaseTool{webSearchTool, searchPostTool}
-	toolInfos := []*schema.ToolInfo{webSearchToolInfo, searchPostToolInfo}
+	tools := []tool.BaseTool{webSearchTool, searchPostTool, tushareTool}
+	toolInfos := []*schema.ToolInfo{webSearchToolInfo, searchPostToolInfo, tushareToolInfo}
 	return tools, toolInfos, nil
 }
 
