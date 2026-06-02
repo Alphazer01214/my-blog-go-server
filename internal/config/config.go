@@ -69,7 +69,7 @@ type WebSearchConfig struct {
 }
 
 type TushareConfig struct {
-	ApiToken string `yaml:"api_token" json:"api_token"`
+	DataDir string `yaml:"data_dir" json:"data_dir"`
 }
 
 type Tools struct {

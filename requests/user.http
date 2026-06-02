@@ -1,20 +1,4 @@
-### 提示
-### 先执行 `requests/auth.http` 里的登录请求，
-### 然后把返回的 `access-token` 和 `refresh-token` 放到下面的变量里。
-###
-### 所有用户信息接口统一使用 UserInfo 结构体响应：
-### {
-###   "user_id": 1,
-###   "username": "takamatsu_tomori",
-###   "email": "...",
-###   "phone": "...",
-###   "bio": "...",
-###   "avatar": "...",
-###   "admin": false,
-###   "role": 0,
-###   "post_count": N,
-###   "comment_count": N
-### }
+
 
 @baseUrl = http://localhost:2333
 @accessToken = your_access_token
@@ -45,10 +29,10 @@ Content-Type: application/json
 Cookie: access-token={{accessToken}}; refresh-token={{refreshToken}}
 
 {
-  "new_username": "takamatsu_tomori",
-  "new_email": "alphazer01214@gmail.com",
+  "new_username": "gashuin",
+  "new_email": "114514@acceed.jp",
   "new_avatar": "https://cdn.discordapp.com/avatars/1/1.png",
-  "new_bio": "I'm takamatsu_tomori",
+  "new_bio": "I'm gashuin",
   "new_phone": "114514",
   "env": {
     "ipv6": "test",

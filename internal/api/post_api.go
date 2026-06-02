@@ -82,9 +82,9 @@ func (pa *PostApi) QueryOneById(c *gin.Context) {
 		response.ErrorWithMsg(c, err.Error())
 		return
 	}
-	if !post.Public && viewerId != post.UserId {
-		post.Content = "this is private post"
-	}
+	//if !post.Public && viewerId != post.UserId {
+	//	post.Content = "this is private post"
+	//}
 	response.SuccessWithDetail(c, post, "query success")
 }
 
@@ -105,11 +105,11 @@ func (pa *PostApi) QueryAll(c *gin.Context) {
 		return
 	}
 
-	for i, item := range postList.Items {
-		if !item.Public && viewerId != item.UserId {
-			postList.Items[i].Content = "this is private post"
-		}
-	}
+	//for i, item := range postList.Items {
+	//	if !item.Public && viewerId != item.UserId {
+	//		postList.Items[i].Content = "this is private post"
+	//	}
+	//}
 	response.SuccessWithDetail(c, postList, "query success")
 }
 

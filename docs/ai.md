@@ -452,6 +452,50 @@ data: {"agent_id":1,"chat_id":"uuid","content":"","status":false,"message":"错�
 7. 下次提问：将新的 usr_prompt 一起发送，复用同一 chat_id
 ```
 
+### 断线重连机制
+
+后端使用 Redis 缓存流式响应内容，支持前端断线重连后继续接收：
+
+1. **流式状态**：`stream:{chat_id}:status` - 值为 `streaming` / `done` / `error`
+2. **流式内容**：`stream:{chat_id}:chunks` - List 结构，存储所有已生成的内容块
+3. **错误信息**：`stream:{chat_id}:error` - 仅在 status=error 时存在
+
+**重连流程**：
+```
+1. 前端重新连接 POST /api/chat?chat_id=xxx
+2. 后端检查 stream:{chat_id}:status
+3. 如果 status=streaming：
+   - 从 stream:{chat_id}:chunks 读取已有内容并推送
+   - 轮询等待新的 chunks 直到 status 变为 done 或 error
+4. 如果 status=error：
+   - 从 stream:{chat_id}:error 读取错误信息
+   - 推送错误帧到前端
+5. 如果 status 不存在：
+   - 正常开始新的流式响应
+```
+
+**SSE 响应格式**：
+
+首帧（包含历史）：
+```json
+data: {"chat_id":"uuid","agent_id":1,"user_id":1,"history":[{"role":"user","content":"你好"}]}
+```
+
+流式块：
+```json
+data: {"agent_id":1,"chat_id":"uuid","content":"增量文本","status":true,"reasoning_content":""}
+```
+
+完成帧：
+```json
+data: {"agent_id":1,"chat_id":"uuid","content":"","status":true,"message":"done"}
+```
+
+错误帧：
+```json
+data: {"agent_id":1,"chat_id":"uuid","content":"","status":false,"message":"错误描述"}
+```
+
 ### 联网搜索
 
 - `ai_options.search_internet: true` 时，AI 会调用搜索 API 获取实时信息

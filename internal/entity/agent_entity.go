@@ -88,11 +88,11 @@ type ToolCall struct {
 	EndedAt   int64  `json:"ended_at,omitempty"`   // unix timestamp
 }
 
-//type StreamChatChunk struct {
-//	SessionId string `json:"session_id"`
-//	Role      string `json:"role"`
-//	IsDone    bool   `json:"is_done"`
-//	IsError   bool   `json:"is_error"`
-//	ErrorMsg  string `json:"error_msg"`
-//	Content   string `json:"content"`
-//}
+// StreamChunk 流式数据块，用于 redis 缓存
+type StreamChunk struct {
+	ChatId   string `json:"chat_id"`
+	Content  string `json:"content"`
+	IsError  bool   `json:"is_error"`
+	ErrorMsg string `json:"error_msg,omitempty"`
+	IsDone   bool   `json:"is_done"`
+}

@@ -4,6 +4,7 @@
 .env
 upload/
 cert/
+resources/
 
 main
 blog.alphazer01214.top 

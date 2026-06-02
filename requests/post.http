@@ -1,22 +1,4 @@
-### 提示
-### 先执行 `requests/auth.http` 里的登录请求，
-### 然后把返回的 `access-token` 和 `refresh-token` 放到下面的 Cookie 里。
-###
-### 响应中 author 字段使用统一的 UserInfo 结构体：
-### {
-###   "user_id": 1,
-###   "created_at": "2024-01-01T00:00:00Z",
-###   "updated_at": "2024-01-01T00:00:00Z",
-###   "username": "takamatsu_tomori",
-###   "email": "alphazer01214@gmail.com",
-###   "phone": "114514",
-###   "bio": "I'm takamatsu_tomori",
-###   "avatar": "https://cdn.discordapp.com/avatars/1/1.png",
-###   "admin": false,
-###   "role": 0,
-###   "post_count": 10,
-###   "comment_count": 20
-### }
+
 
 @baseUrl = http://localhost:2333
 @accessToken = your_access_token

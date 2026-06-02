@@ -1,23 +1,21 @@
 package tool
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/schema"
+	"github.com/parquet-go/parquet-go"
 )
 
-const tushareAPIURL = "https://api.tushare.pro"
-
+// TushareTool 从本地 parquet 文件读取 A 股数据
 type TushareTool struct {
-	ApiToken string
+	DataDir string
 }
 
 type TushareParams struct {
@@ -26,37 +24,43 @@ type TushareParams struct {
 	Name      string `json:"name,omitempty"`
 	StartDate string `json:"start_date,omitempty"`
 	EndDate   string `json:"end_date,omitempty"`
-	TradeDate string `json:"trade_date,omitempty"`
 	Indicator string `json:"indicator,omitempty"`
 	Period    int    `json:"period,omitempty"`
 }
 
-type tushareRequest struct {
-	APIName string                 `json:"api_name"`
-	Token   string                 `json:"token"`
-	Params  map[string]interface{} `json:"params"`
-	Fields  string                 `json:"fields"`
+// StockBasic 股票基本信息（从 stock_list.parquet 读取）
+type StockBasic struct {
+	Code string `parquet:"code"`
+	Name string `parquet:"name"`
 }
 
-type tushareResponse struct {
-	Code int    `json:"code"`
-	Msg  string `json:"msg"`
-	Data struct {
-		Fields []string                 `json:"fields"`
-		Items  [][]interface{}          `json:"items"`
-		HasMore bool                    `json:"has_more"`
-		Count  int                      `json:"count"`
-	} `json:"data"`
+// DailyRow 日线行情（从 daily.parquet 读取）
+type DailyRow struct {
+	Date             string  `parquet:"date"`
+	Symbol           string  `parquet:"symbol"`
+	Name             string  `parquet:"name"`
+	Open             float64 `parquet:"open"`
+	High             float64 `parquet:"high"`
+	Low              float64 `parquet:"low"`
+	Close            float64 `parquet:"close"`
+	Volume           float64 `parquet:"volume"`
+	Amount           float64 `parquet:"amount"`
+	OutstandingShare float64 `parquet:"outstanding_share"`
+	Turnover         float64 `parquet:"turnover"`
 }
 
-func NewTushareTool(apiToken string) *TushareTool {
-	return &TushareTool{ApiToken: apiToken}
+func NewTushareTool(dataDir string) *TushareTool {
+	if dataDir == "" {
+		dataDir = "resources"
+	}
+	return &TushareTool{DataDir: dataDir}
 }
 
 func (ts *TushareTool) Info(ctx context.Context) (*schema.ToolInfo, error) {
 	return &schema.ToolInfo{
 		Name: "tushare",
-		Desc: "获取中国A股市场数据。支持：查询股票基本信息(get_stock_basic)、获取日线行情(get_daily)、计算技术指标(calc_indicator，支持MACD/KDJ/RSI/MA)。当用户询问股票、需要行情数据或技术分析时使用。",
+		Desc: `获取中国A股市场数据。支持：查询股票基本信息(get_stock_basic)、获取日线行情(get_daily)、计算技术指标(calc_indicator，支持MACD/KDJ/RSI/MA)。当用户询问股票、需要行情数据或技术分析时使用。
+注意：数据仅有20240101至20260601，若超出范围或无法获取，则放弃查询历史数据`,
 		ParamsOneOf: schema.NewParamsOneOfByParams(
 			map[string]*schema.ParameterInfo{
 				"action": {
@@ -66,7 +70,7 @@ func (ts *TushareTool) Info(ctx context.Context) (*schema.ToolInfo, error) {
 				},
 				"ts_code": {
 					Type: "string",
-					Desc: "股票代码，格式如 000001.SZ 或 600000.SH",
+					Desc: "股票代码，格式如 sh600519 或 sz000001（带交易所前缀），或纯数字如 600519",
 				},
 				"name": {
 					Type: "string",
@@ -74,15 +78,11 @@ func (ts *TushareTool) Info(ctx context.Context) (*schema.ToolInfo, error) {
 				},
 				"start_date": {
 					Type: "string",
-					Desc: "开始日期 YYYYMMDD",
+					Desc: "开始日期 YYYY-MM-DD 或 YYYYMMDD",
 				},
 				"end_date": {
 					Type: "string",
-					Desc: "结束日期 YYYYMMDD",
-				},
-				"trade_date": {
-					Type: "string",
-					Desc: "交易日期 YYYYMMDD，用于查询某一天的数据",
+					Desc: "结束日期 YYYY-MM-DD 或 YYYYMMDD",
 				},
 				"indicator": {
 					Type: "string",
@@ -105,103 +105,89 @@ func (ts *TushareTool) InvokableRun(ctx context.Context, argumentsInJSON string,
 
 	switch params.Action {
 	case "get_stock_basic":
-		return ts.getStockBasic(ctx, params)
+		return ts.getStockBasic(params)
 	case "get_daily":
-		return ts.getDaily(ctx, params)
+		return ts.getDaily(params)
 	case "calc_indicator":
-		return ts.calcIndicator(ctx, params)
+		return ts.calcIndicator(params)
 	default:
 		return fmt.Sprintf("未知操作: %s，支持的操作: get_stock_basic, get_daily, calc_indicator", params.Action), nil
 	}
 }
 
-func (ts *TushareTool) getStockBasic(ctx context.Context, params TushareParams) (string, error) {
-	reqParams := map[string]interface{}{
-		"list_status": "L",
-	}
-	if params.TsCode != "" {
-		reqParams["ts_code"] = params.TsCode
-	}
-	if params.Name != "" {
-		reqParams["name"] = params.Name
-	}
+func (ts *TushareTool) getStockBasic(params TushareParams) (string, error) {
+	filePath := filepath.Join(ts.DataDir, "stock_list.parquet")
 
-	data, err := ts.callAPI(ctx, "stock_basic", reqParams, "ts_code,symbol,name,area,industry,market,list_date,exchange")
+	rows, err := parquet.ReadFile[StockBasic](filePath)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("读取股票列表失败: %w", err)
 	}
 
-	if len(data.Data.Items) == 0 {
+	// 过滤
+	filtered := make([]StockBasic, 0)
+	code := normalizeCode(params.TsCode)
+	name := params.Name
+
+	for _, row := range rows {
+		if code != "" && !strings.Contains(row.Code, code) {
+			continue
+		}
+		if name != "" && !strings.Contains(row.Name, name) {
+			continue
+		}
+		filtered = append(filtered, row)
+	}
+
+	if len(filtered) == 0 {
 		return "未找到相关股票信息", nil
+	}
+
+	// 限制返回数量
+	if len(filtered) > 20 {
+		filtered = filtered[:20]
 	}
 
 	var b strings.Builder
 	b.WriteString("## 股票基本信息\n\n")
-	for _, item := range data.Data.Items {
-		tsCode := safeString(item, 0, data.Data.Fields)
-		symbol := safeString(item, 1, data.Data.Fields)
-		name := safeString(item, 2, data.Data.Fields)
-		area := safeString(item, 3, data.Data.Fields)
-		industry := safeString(item, 4, data.Data.Fields)
-		market := safeString(item, 5, data.Data.Fields)
-		listDate := safeString(item, 6, data.Data.Fields)
-		exchange := safeString(item, 7, data.Data.Fields)
-
-		b.WriteString(fmt.Sprintf("- **%s** (%s)\n", name, tsCode))
-		b.WriteString(fmt.Sprintf("  代码: %s | 地区: %s | 行业: %s\n", symbol, area, industry))
-		b.WriteString(fmt.Sprintf("  市场: %s | 交易所: %s | 上市日期: %s\n", market, exchange, listDate))
+	for _, row := range filtered {
+		symbol := codeToSymbol(row.Code)
+		b.WriteString(fmt.Sprintf("- **%s** (%s)\n", row.Name, symbol))
+		b.WriteString(fmt.Sprintf("  代码: %s\n", row.Code))
 	}
 	return b.String(), nil
 }
 
-func (ts *TushareTool) getDaily(ctx context.Context, params TushareParams) (string, error) {
+func (ts *TushareTool) getDaily(params TushareParams) (string, error) {
 	if params.TsCode == "" {
 		return "请提供股票代码 ts_code", nil
 	}
 
-	reqParams := map[string]interface{}{
-		"ts_code": params.TsCode,
-	}
-	if params.TradeDate != "" {
-		reqParams["trade_date"] = params.TradeDate
-	}
-	if params.StartDate != "" {
-		reqParams["start_date"] = params.StartDate
-	}
-	if params.EndDate != "" {
-		reqParams["end_date"] = params.EndDate
-	}
+	symbol := normalizeSymbol(params.TsCode)
+	startDate := normalizeDate(params.StartDate)
+	endDate := normalizeDate(params.EndDate)
 
-	data, err := ts.callAPI(ctx, "daily", reqParams, "ts_code,trade_date,open,high,low,close,pre_close,change,pct_chg,vol,amount")
+	rows, err := ts.readDailyData(symbol, startDate, endDate)
 	if err != nil {
 		return "", err
 	}
 
-	if len(data.Data.Items) == 0 {
+	if len(rows) == 0 {
 		return "未找到行情数据", nil
 	}
 
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("## %s 日线行情\n\n", params.TsCode))
-	b.WriteString("| 日期 | 开盘 | 最高 | 最低 | 收盘 | 涨跌幅 | 成交量(手) | 成交额(千元) |\n")
-	b.WriteString("|------|------|------|------|------|--------|------------|------------|\n")
+	b.WriteString(fmt.Sprintf("## %s 日线行情\n\n", symbol))
+	b.WriteString("| 日期 | 开盘 | 最高 | 最低 | 收盘 | 成交量 | 成交额 |\n")
+	b.WriteString("|------|------|------|------|------|--------|--------|\n")
 
-	for _, item := range data.Data.Items {
-		tradeDate := safeString(item, 1, data.Data.Fields)
-		open := safeString(item, 2, data.Data.Fields)
-		high := safeString(item, 3, data.Data.Fields)
-		low := safeString(item, 4, data.Data.Fields)
-		close := safeString(item, 5, data.Data.Fields)
-		pctChg := safeString(item, 7, data.Data.Fields)
-		vol := safeString(item, 8, data.Data.Fields)
-		amount := safeString(item, 9, data.Data.Fields)
-		b.WriteString(fmt.Sprintf("| %s | %s | %s | %s | %s | %s%% | %s | %s |\n",
-			tradeDate, open, high, low, close, pctChg, vol, amount))
+	for _, row := range rows {
+		b.WriteString(fmt.Sprintf("| %s | %.2f | %.2f | %.2f | %.2f | %.0f | %.0f |\n",
+			row.Date, row.Open, row.High, row.Low, row.Close, row.Volume, row.Amount))
 	}
 	return b.String(), nil
 }
 
-func (ts *TushareTool) calcIndicator(ctx context.Context, params TushareParams) (string, error) {
+func (ts *TushareTool) calcIndicator(params TushareParams) (string, error) {
 	if params.TsCode == "" {
 		return "请提供股票代码 ts_code", nil
 	}
@@ -209,47 +195,43 @@ func (ts *TushareTool) calcIndicator(ctx context.Context, params TushareParams) 
 		return "请提供指标类型 indicator: MACD, KDJ, RSI, MA", nil
 	}
 
-	// 默认取最近 120 天数据
-	endDate := params.EndDate
+	symbol := normalizeSymbol(params.TsCode)
+	endDate := normalizeDate(params.EndDate)
+	startDate := normalizeDate(params.StartDate)
+
+	// 默认取最近 180 天数据
 	if endDate == "" {
-		endDate = time.Now().Format("20060102")
+		endDate = time.Now().Format("2006-01-02")
 	}
-	startDate := params.StartDate
 	if startDate == "" {
-		t, _ := time.Parse("20060102", endDate)
-		startDate = t.AddDate(0, 0, -180).Format("20060102")
+		t, _ := time.Parse("2006-01-02", endDate)
+		startDate = t.AddDate(0, 0, -180).Format("2006-01-02")
 	}
 
-	reqParams := map[string]interface{}{
-		"ts_code":   params.TsCode,
-		"start_date": startDate,
-		"end_date":   endDate,
-	}
-
-	data, err := ts.callAPI(ctx, "daily", reqParams, "ts_code,trade_date,open,high,low,close,vol")
+	rows, err := ts.readDailyData(symbol, startDate, endDate)
 	if err != nil {
 		return "", err
 	}
 
-	if len(data.Data.Items) < 30 {
-		return "数据不足，无法计算技术指标", nil
+	if len(rows) < 30 {
+		return "数据不足，无法计算技术指标（需要至少30条数据）", nil
 	}
 
 	// 提取 OHLCV 数据
-	closes := make([]float64, 0, len(data.Data.Items))
-	highs := make([]float64, 0, len(data.Data.Items))
-	lows := make([]float64, 0, len(data.Data.Items))
-	dates := make([]string, 0, len(data.Data.Items))
+	closes := make([]float64, len(rows))
+	highs := make([]float64, len(rows))
+	lows := make([]float64, len(rows))
+	dates := make([]string, len(rows))
 
-	for _, item := range data.Data.Items {
-		dates = append(dates, safeString(item, 1, data.Data.Fields))
-		closes = append(closes, safeFloat(item, 5, data.Data.Fields))
-		highs = append(highs, safeFloat(item, 3, data.Data.Fields))
-		lows = append(lows, safeFloat(item, 4, data.Data.Fields))
+	for i, row := range rows {
+		dates[i] = row.Date
+		closes[i] = row.Close
+		highs[i] = row.High
+		lows[i] = row.Low
 	}
 
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("## %s 技术指标分析 (%s ~ %s)\n\n", params.TsCode, startDate, endDate))
+	b.WriteString(fmt.Sprintf("## %s 技术指标分析 (%s ~ %s)\n\n", symbol, startDate, endDate))
 
 	switch strings.ToUpper(params.Indicator) {
 	case "MACD":
@@ -264,7 +246,6 @@ func (ts *TushareTool) calcIndicator(ctx context.Context, params TushareParams) 
 		for i := start; i < len(dif); i++ {
 			b.WriteString(fmt.Sprintf("| %s | %.4f | %.4f | %.4f |\n", dates[i], dif[i], dea[i], macd[i]))
 		}
-		// 给出判断
 		if len(dif) >= 2 {
 			lastDIF := dif[len(dif)-1]
 			lastDEA := dea[len(dea)-1]
@@ -373,72 +354,89 @@ func (ts *TushareTool) calcIndicator(ctx context.Context, params TushareParams) 
 	return b.String(), nil
 }
 
-func (ts *TushareTool) callAPI(ctx context.Context, apiName string, params map[string]interface{}, fields string) (*tushareResponse, error) {
-	reqBody := tushareRequest{
-		APIName: apiName,
-		Token:   ts.ApiToken,
-		Params:  params,
-		Fields:  fields,
-	}
+// readDailyData 从 daily.parquet 读取指定股票和日期范围的数据
+func (ts *TushareTool) readDailyData(symbol, startDate, endDate string) ([]DailyRow, error) {
+	filePath := filepath.Join(ts.DataDir, "daily.parquet")
 
-	bodyBytes, err := json.Marshal(reqBody)
+	rows, err := parquet.ReadFile[DailyRow](filePath)
 	if err != nil {
-		return nil, fmt.Errorf("marshal request: %w", err)
+		return nil, fmt.Errorf("读取日线数据失败: %w", err)
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", tushareAPIURL, bytes.NewReader(bodyBytes))
-	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("http request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	respBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read response: %w", err)
+	// 过滤
+	filtered := make([]DailyRow, 0)
+	for _, row := range rows {
+		if row.Symbol != symbol {
+			continue
+		}
+		if startDate != "" && row.Date < startDate {
+			continue
+		}
+		if endDate != "" && row.Date > endDate {
+			continue
+		}
+		filtered = append(filtered, row)
 	}
 
-	var tResp tushareResponse
-	if err := json.Unmarshal(respBytes, &tResp); err != nil {
-		return nil, fmt.Errorf("unmarshal response: %w", err)
-	}
-
-	if tResp.Code != 0 {
-		return nil, fmt.Errorf("tushare api error: %s", tResp.Msg)
-	}
-
-	return &tResp, nil
+	return filtered, nil
 }
 
-func safeString(item []interface{}, idx int, fields []string) string {
-	if idx >= len(item) || idx >= len(fields) {
-		return ""
-	}
-	if item[idx] == nil {
-		return ""
-	}
-	return fmt.Sprintf("%v", item[idx])
+// normalizeCode 将用户输入的代码标准化为 parquet 中的 code 格式（纯6位数字）
+func normalizeCode(code string) string {
+	code = strings.TrimSpace(code)
+	code = strings.ToUpper(code)
+	// 移除 .SH .SZ 后缀
+	code = strings.Replace(code, ".SH", "", 1)
+	code = strings.Replace(code, ".SZ", "", 1)
+	// 移除 sh sz 前缀
+	code = strings.TrimPrefix(code, "SH")
+	code = strings.TrimPrefix(code, "SZ")
+	return code
 }
 
-func safeFloat(item []interface{}, idx int, fields []string) float64 {
-	if idx >= len(item) || idx >= len(fields) {
-		return 0
+// normalizeSymbol 将用户输入的代码标准化为 parquet 中的 symbol 格式（sh600519 / sz000001）
+func normalizeSymbol(code string) string {
+	code = strings.TrimSpace(code)
+	code = strings.ToLower(code)
+	// 如果已经是 sh/sz 开头，直接返回
+	if strings.HasPrefix(code, "sh") || strings.HasPrefix(code, "sz") {
+		return code
 	}
-	if item[idx] == nil {
-		return 0
+	// 移除 .sh .sz 后缀
+	code = strings.Replace(code, ".sh", "", 1)
+	code = strings.Replace(code, ".sz", "", 1)
+	// 根据代码判断交易所
+	if len(code) == 6 {
+		if code[0] == '6' {
+			return "sh" + code
+		} else if code[0] == '0' || code[0] == '3' {
+			return "sz" + code
+		}
 	}
-	switch v := item[idx].(type) {
-	case float64:
-		return v
-	case int:
-		return float64(v)
-	default:
-		return 0
+	return code
+}
+
+// codeToSymbol 将 code（纯数字）转为 symbol（带交易所前缀）
+func codeToSymbol(code string) string {
+	if len(code) == 6 {
+		if code[0] == '6' {
+			return "sh" + code
+		} else if code[0] == '0' || code[0] == '3' {
+			return "sz" + code
+		}
 	}
+	return code
+}
+
+// normalizeDate 标准化日期格式为 YYYY-MM-DD
+func normalizeDate(date string) string {
+	date = strings.TrimSpace(date)
+	if date == "" {
+		return ""
+	}
+	// YYYYMMDD -> YYYY-MM-DD
+	if len(date) == 8 {
+		return date[:4] + "-" + date[4:6] + "-" + date[6:]
+	}
+	return date
 }

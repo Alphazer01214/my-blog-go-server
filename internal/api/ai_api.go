@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"blog.alphazer01214.top/internal/entity"
 	"blog.alphazer01214.top/internal/request"
@@ -260,11 +261,78 @@ func (ap *AiApi) OnlineStreamChat(c *gin.Context) {
 		return
 	}
 
+	// 检查是否有进行中的流式响应（前端重连场景）
+	streamStatus := aiService.GetStreamStatus(ctx, chatId)
+	if streamStatus == "streaming" {
+		// 有进行中的流式响应，从 redis 恢复已有 chunks
+		sentChunks := 0
+		for {
+			// 检查连接是否断开
+			if c.Writer.Status() != http.StatusOK {
+				return
+			}
+
+			chunks := aiService.GetStreamChunks(ctx, chatId)
+			// 推送新增的 chunks
+			for i := sentChunks; i < len(chunks); i++ {
+				chunk := chunks[i]
+				rp.Content = chunk.Content
+				rp.Status = true
+				if chunk.IsError {
+					rp.Status = false
+					rp.Message = chunk.ErrorMsg
+				}
+				if err := writeSSE(rp); err != nil {
+					return
+				}
+			}
+			sentChunks = len(chunks)
+
+			// 检查流式是否完成
+			currentStatus := aiService.GetStreamStatus(ctx, chatId)
+			if currentStatus == "done" {
+				// 推送剩余的 chunks
+				chunks = aiService.GetStreamChunks(ctx, chatId)
+				for i := sentChunks; i < len(chunks); i++ {
+					chunk := chunks[i]
+					rp.Content = chunk.Content
+					rp.Status = true
+					if err := writeSSE(rp); err != nil {
+						return
+					}
+				}
+				rp.Message = "done"
+				rp.Status = true
+				_ = writeSSE(rp)
+				return
+			} else if currentStatus == "error" {
+				// 推送错误信息
+				errMsg := aiService.GetStreamError(ctx, chatId)
+				rp.Status = false
+				rp.Message = errMsg
+				_ = writeSSE(rp)
+				return
+			}
+
+			// 轮询间隔
+			time.Sleep(100 * time.Millisecond)
+		}
+	} else if streamStatus == "error" {
+		// 流式已结束且有错误
+		errMsg := aiService.GetStreamError(ctx, chatId)
+		rp.Status = false
+		rp.Message = errMsg
+		_ = writeSSE(rp)
+		return
+	}
+
+	// 正常开始新的流式响应
 	pushStream := func(data string) error {
 		if c.Writer.Status() != http.StatusOK {
 			return errors.New("internet interrupted")
 		}
 		rp.Content = data
+		rp.Status = true
 		return writeSSE(rp)
 	}
 

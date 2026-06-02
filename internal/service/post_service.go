@@ -38,6 +38,14 @@ func (ps *PostService) GetPostByPostId(id uint, viewerId uint) (*response.PostDe
 	if err != nil {
 		return nil, err
 	}
+	viewer, err := Service.UserService.GetUserInfoById(viewerId, 0)
+	if err != nil {
+		return nil, err
+	}
+	if !post.Public && post.UserId != viewerId && viewer.Role != entity.RoleTakamatsuTomori {
+		post.Content = "this is a private post"
+		//return ps.toPostDetail(post, &author, viewerId), nil
+	}
 	return ps.toPostDetail(post, &author, viewerId), nil
 }
 
@@ -56,8 +64,12 @@ func (ps *PostService) GetAllPosts(page, pageSize int, viewerId uint) (response.
 	items := make([]response.PostDetail, len(posts))
 	for i, post := range posts {
 		author, err := Service.UserService.GetUserInfoById(post.UserId, 0)
+		viewer, err := Service.UserService.GetUserInfoById(viewerId, 0)
 		if err != nil {
 			return response.PostList{}, err
+		}
+		if !post.Public && viewerId != author.UserId && viewer.Role != entity.RoleTakamatsuTomori {
+			continue
 		}
 		items[i] = *ps.toPostDetail(&post, &author, viewerId)
 	}

@@ -449,7 +449,7 @@ func (ai *AIService) TmpToolCallingStreamChat(ctx context.Context, userId uint, 
 func (ai *AIService) registerTools(ctx context.Context) ([]tool.BaseTool, []*schema.ToolInfo, error) {
 	webSearchTool := tomori_tool.NewWebSearchTool(global.GetConfig().Tools.WebSearch.ApiKey)
 	searchPostTool := tomori_tool.NewSearchPostTool()
-	tushareTool := tomori_tool.NewTushareTool(global.GetConfig().Tools.Tushare.ApiToken)
+	tushareTool := tomori_tool.NewTushareTool(global.GetConfig().Tools.Tushare.DataDir)
 
 	webSearchToolInfo, err := webSearchTool.Info(ctx)
 	if err != nil {
@@ -476,9 +476,28 @@ func (ai *AIService) ToolCallingStreamChat(ctx context.Context, userId uint, cha
 	agentId := req.AgentId
 	sysPrompt := req.SysPrompt
 	usrPrompt := req.UsrPrompt
+
+	// 初始化流式缓存
+	ai.SetStreamStatus(ctx, chatId, "streaming")
+	ai.ClearStreamChunks(ctx, chatId)
+
+	// streamCallback 同时推送到前端和写入 redis
+	streamCallback := func(content string, isError bool, errMsg string) error {
+		chunk := entity.StreamChunk{
+			ChatId:   chatId,
+			Content:  content,
+			IsError:  isError,
+			ErrorMsg: errMsg,
+		}
+		ai.AppendStreamChunk(ctx, chatId, chunk)
+		return callback(content)
+	}
+
 	session, err := ai.loadChat(ctx, userId, chatId)
 
 	if err != nil {
+		ai.SetStreamStatus(ctx, chatId, "error")
+		ai.SetStreamError(ctx, chatId, err.Error())
 		return err
 	}
 	session.UserId = userId
@@ -487,16 +506,22 @@ func (ai *AIService) ToolCallingStreamChat(ctx context.Context, userId uint, cha
 	session.UUID = chatId
 	agent, err := ai.QueryAgentById(ctx, userId, agentId)
 	if err != nil {
+		ai.SetStreamStatus(ctx, chatId, "error")
+		ai.SetStreamError(ctx, chatId, err.Error())
 		return err
 	}
 	chatModel, err := ai.getEinoChatModel(ctx, agent)
 	if err != nil {
+		ai.SetStreamStatus(ctx, chatId, "error")
+		ai.SetStreamError(ctx, chatId, err.Error())
 		return err
 	}
 
 	// register tools
 	tools, toolInfos, err := ai.registerTools(ctx)
 	if err != nil {
+		ai.SetStreamStatus(ctx, chatId, "error")
+		ai.SetStreamError(ctx, chatId, err.Error())
 		return err
 	}
 	toolNode, err := compose.NewToolNode(ctx, &compose.ToolsNodeConfig{
@@ -517,92 +542,118 @@ func (ai *AIService) ToolCallingStreamChat(ctx context.Context, userId uint, cha
 	}
 	prompt, err := ai.buildPrompt(ctx, session, firstSysChatMessage, firstUsrChatMessage)
 	if err != nil {
+		ai.SetStreamStatus(ctx, chatId, "error")
+		ai.SetStreamError(ctx, chatId, err.Error())
 		return err
 	}
 
 	// ReAct 循环：支持多轮工具调用
 	// maxToolRounds 最大工具调用轮数，防止无限循环
-	const maxToolRounds = 5
+	const maxToolRounds = 10
 	reactMessages := make([]*schema.Message, len(prompt))
 	copy(reactMessages, prompt)
-	toolCallMessages := make([]entity.ChatMessage, 0) // 记录工具调用过程
 	round := 0
 
+	// 累积所有内容到一条消息
+	assistantMessage := entity.ChatMessage{
+		Role:    "assistant",
+		Time:    time.Now().Unix(),
+		Content: "",
+	}
+
 	for round < maxToolRounds {
-		// LLM 生成响应
-		resp, err := toolCallingChatModel.Generate(ctx, reactMessages)
+		// 使用 Stream 进行流式调用
+		streamReader, err := toolCallingChatModel.Stream(ctx, reactMessages)
 		if err != nil {
-			fmt.Println(err)
+			ai.SetStreamStatus(ctx, chatId, "error")
+			ai.SetStreamError(ctx, chatId, err.Error())
 			return err
+		}
+
+		// 完整的响应，用于判断是否有 ToolCalls
+		fullMessage := &schema.Message{Role: schema.Assistant}
+		// 累积 ToolCalls 的临时结构
+		toolCallsAccumulator := make(map[int]*schema.ToolCall)
+
+		// 读取流式响应
+		for {
+			chunk, err := streamReader.Recv()
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			if err != nil {
+				ai.SetStreamStatus(ctx, chatId, "error")
+				ai.SetStreamError(ctx, chatId, err.Error())
+				return err
+			}
+
+			// 流式输出文本内容给前端，并累积到 assistantMessage
+			if chunk.Content != "" {
+				streamCallback(chunk.Content, false, "")
+				fullMessage.Content += chunk.Content
+				assistantMessage.Content += chunk.Content
+			}
+
+			// 累积 ToolCalls 的增量数据
+			for _, tc := range chunk.ToolCalls {
+				if _, ok := toolCallsAccumulator[*tc.Index]; !ok {
+					toolCallsAccumulator[*tc.Index] = &schema.ToolCall{
+						Index:    tc.Index,
+						ID:       tc.ID,
+						Type:     tc.Type,
+						Function: schema.FunctionCall{},
+					}
+				}
+				accTC := toolCallsAccumulator[*tc.Index]
+				if tc.ID != "" {
+					accTC.ID = tc.ID
+				}
+				if tc.Type != "" {
+					accTC.Type = tc.Type
+				}
+				if tc.Function.Name != "" {
+					accTC.Function.Name += tc.Function.Name
+				}
+				if tc.Function.Arguments != "" {
+					accTC.Function.Arguments += tc.Function.Arguments
+				}
+			}
+		}
+		streamReader.Close()
+
+		// 将累积的 ToolCalls 合并到 fullMessage
+		if len(toolCallsAccumulator) > 0 {
+			fullMessage.ToolCalls = make([]schema.ToolCall, 0, len(toolCallsAccumulator))
+			for i := 0; i < len(toolCallsAccumulator); i++ {
+				if tc, ok := toolCallsAccumulator[i]; ok {
+					fullMessage.ToolCalls = append(fullMessage.ToolCalls, *tc)
+				}
+			}
 		}
 
 		// 如果没有工具调用，结束循环
-		if len(resp.ToolCalls) == 0 {
-			// 将最终回答流式输出
-			finalRespChatMessage := entity.ChatMessage{
-				Role:    "assistant",
-				Time:    time.Now().Unix(),
-				Content: "",
-			}
-			if resp.Content != "" {
-				// 如果 Generate 已经有内容，直接使用
-				callback(resp.Content)
-				finalRespChatMessage.Content = resp.Content
-			} else {
-				// 流式输出
-				finalRespStream, err := chatModel.Stream(ctx, reactMessages)
-				if err != nil {
-					return err
-				}
-				defer finalRespStream.Close()
-				for {
-					chunk, err := finalRespStream.Recv()
-					if err != nil {
-						break
-					}
-					if chunk.Content == "" {
-						continue
-					}
-					finalRespChatMessage.Content += chunk.Content
-					callback(chunk.Content)
-				}
-			}
-
-			// 保存到 session
-			allMessages := append([]entity.ChatMessage{firstUsrChatMessage}, toolCallMessages...)
-			allMessages = append([]entity.ChatMessage{firstUsrChatMessage}, finalRespChatMessage)
-			session.ChatMessages = append(session.ChatMessages, allMessages...)
+		if len(fullMessage.ToolCalls) == 0 {
 			break
 		}
 
-		// 有工具调用，记录工具调用信息
-		toolCallChatMessage := entity.ChatMessage{
-			Role:    "assistant",
-			Time:    time.Now().Unix(),
-			Content: "",
+		// 有工具调用，将工具调用信息追加到 assistantMessage
+		toolCallInfo := ""
+		for _, toolCall := range fullMessage.ToolCalls {
+			toolCallInfo += fmt.Sprintf("\n模型决定调用工具%v, 参数为%v\n", toolCall.Function.Name, toolCall.Function.Arguments)
 		}
-		for _, toolCall := range resp.ToolCalls {
-			toolCallChatMessage.Content += fmt.Sprintf("\n模型决定调用工具%v, 参数为%v\n", toolCall.Function.Name, toolCall.Function.Arguments)
-		}
-		callback(toolCallChatMessage.Content)
-		toolCallMessages = append(toolCallMessages, toolCallChatMessage)
+		streamCallback(toolCallInfo, false, "")
+		assistantMessage.Content += toolCallInfo
 
 		// 执行工具
-		toolResp, err := toolNode.Invoke(ctx, resp)
-		//toolResp = append(toolResp, prompt[len(prompt)-1])
+		toolResp, err := toolNode.Invoke(ctx, fullMessage)
 		if err != nil {
+			ai.SetStreamStatus(ctx, chatId, "error")
+			ai.SetStreamError(ctx, chatId, err.Error())
 			return err
 		}
 
-		// 处理工具返回结果，没必要，不然篇幅太大
-		//for _, tr := range toolResp {
-		//	if tr.Content != "" {
-		//		callback(tr.Content)
-		//	}
-		//}
-
 		// 将工具调用和结果追加到消息历史，继续循环
-		reactMessages = append(reactMessages, resp)
+		reactMessages = append(reactMessages, fullMessage)
 		reactMessages = append(reactMessages, toolResp...)
 
 		round++
@@ -610,32 +661,38 @@ func (ai *AIService) ToolCallingStreamChat(ctx context.Context, userId uint, cha
 
 	// 如果循环结束仍未生成最终回答（达到最大轮数）
 	if round >= maxToolRounds {
-		callback("\n已达到最大工具调用轮数，生成最终回答...\n")
+		streamCallback("\n已达到最大工具调用轮数，生成最终回答...\n", false, "")
+		assistantMessage.Content += "\n已达到最大工具调用轮数，生成最终回答...\n"
 		finalRespStream, err := chatModel.Stream(ctx, reactMessages)
 		if err != nil {
+			ai.SetStreamStatus(ctx, chatId, "error")
+			ai.SetStreamError(ctx, chatId, err.Error())
 			return err
 		}
 		defer finalRespStream.Close()
-		finalRespChatMessage := entity.ChatMessage{
-			Role:    "assistant",
-			Time:    time.Now().Unix(),
-			Content: "",
-		}
 		for {
 			chunk, err := finalRespStream.Recv()
-			if err != nil {
+			if errors.Is(err, io.EOF) {
 				break
+			}
+			if err != nil {
+				ai.SetStreamStatus(ctx, chatId, "error")
+				ai.SetStreamError(ctx, chatId, err.Error())
+				return err
 			}
 			if chunk.Content == "" {
 				continue
 			}
-			finalRespChatMessage.Content += chunk.Content
-			callback(chunk.Content)
+			streamCallback(chunk.Content, false, "")
+			assistantMessage.Content += chunk.Content
 		}
-		allMessages := append([]entity.ChatMessage{firstUsrChatMessage}, toolCallMessages...)
-		allMessages = append(allMessages, finalRespChatMessage)
-		session.ChatMessages = append(session.ChatMessages, allMessages...)
 	}
+
+	// 流式完成
+	ai.SetStreamStatus(ctx, chatId, "done")
+
+	// 保存用户消息和助手消息到 session
+	session.ChatMessages = append(session.ChatMessages, firstUsrChatMessage, assistantMessage)
 
 	ai.saveSessionAsync(userId, chatId, session)
 	return nil
@@ -762,6 +819,109 @@ func (ai *AIService) isStreaming(ctx context.Context, chatId string) bool {
 	}
 	return chatMessage.IsDone
 }
+
+// ========== 流式缓存相关方法 ==========
+
+const (
+	streamStatusTTL = 5 * time.Minute
+	streamChunkTTL  = 5 * time.Minute
+)
+
+// streamStatusKey 获取流式状态的 redis key
+func streamStatusKey(chatId string) string {
+	return fmt.Sprintf("stream:%s:status", chatId)
+}
+
+// streamChunksKey 获取流式 chunks 的 redis key
+func streamChunksKey(chatId string) string {
+	return fmt.Sprintf("stream:%s:chunks", chatId)
+}
+
+// streamErrorKey 获取流式错误的 redis key
+func streamErrorKey(chatId string) string {
+	return fmt.Sprintf("stream:%s:error", chatId)
+}
+
+// SetStreamStatus 设置流式状态
+func (ai *AIService) SetStreamStatus(ctx context.Context, chatId string, status string) error {
+	return global.GetRedis().Set(ctx, streamStatusKey(chatId), status, streamStatusTTL).Err()
+}
+
+// GetStreamStatus 获取流式状态
+func (ai *AIService) GetStreamStatus(ctx context.Context, chatId string) string {
+	status, err := global.GetRedis().Get(ctx, streamStatusKey(chatId)).Result()
+	if err != nil {
+		return ""
+	}
+	return status
+}
+
+// ClearStreamChunks 清空流式 chunks
+func (ai *AIService) ClearStreamChunks(ctx context.Context, chatId string) error {
+	return global.GetRedis().Del(ctx, streamChunksKey(chatId)).Err()
+}
+
+// AppendStreamChunk 追加一个流式 chunk
+func (ai *AIService) AppendStreamChunk(ctx context.Context, chatId string, chunk entity.StreamChunk) error {
+	data, err := json.Marshal(chunk)
+	if err != nil {
+		return err
+	}
+	pipe := global.GetRedis().Pipeline()
+	pipe.RPush(ctx, streamChunksKey(chatId), data)
+	pipe.Expire(ctx, streamChunksKey(chatId), streamChunkTTL)
+	_, err = pipe.Exec(ctx)
+	return err
+}
+
+// GetStreamChunks 获取所有流式 chunks
+func (ai *AIService) GetStreamChunks(ctx context.Context, chatId string) []entity.StreamChunk {
+	results, err := global.GetRedis().LRange(ctx, streamChunksKey(chatId), 0, -1).Result()
+	if err != nil {
+		return nil
+	}
+
+	chunks := make([]entity.StreamChunk, 0, len(results))
+	for _, r := range results {
+		var chunk entity.StreamChunk
+		if err := json.Unmarshal([]byte(r), &chunk); err != nil {
+			continue
+		}
+		chunks = append(chunks, chunk)
+	}
+	return chunks
+}
+
+// SetStreamError 设置流式错误信息
+func (ai *AIService) SetStreamError(ctx context.Context, chatId string, errMsg string) error {
+	return global.GetRedis().Set(ctx, streamErrorKey(chatId), errMsg, streamStatusTTL).Err()
+}
+
+// GetStreamError 获取流式错误信息
+func (ai *AIService) GetStreamError(ctx context.Context, chatId string) string {
+	errMsg, err := global.GetRedis().Get(ctx, streamErrorKey(chatId)).Result()
+	if err != nil {
+		return ""
+	}
+	return errMsg
+}
+
+// ClearStreamCache 清空所有流式缓存
+func (ai *AIService) ClearStreamCache(ctx context.Context, chatId string) {
+	pipe := global.GetRedis().Pipeline()
+	pipe.Del(ctx, streamStatusKey(chatId))
+	pipe.Del(ctx, streamChunksKey(chatId))
+	pipe.Del(ctx, streamErrorKey(chatId))
+	pipe.Exec(ctx)
+}
+
+// IsStreamActive 检查流式是否正在进行
+func (ai *AIService) IsStreamActive(ctx context.Context, chatId string) bool {
+	status := ai.GetStreamStatus(ctx, chatId)
+	return status == "streaming"
+}
+
+// ========== 流式缓存相关方法 END ==========
 
 func (ai *AIService) queryAgentById(ctx context.Context, id uint) (*entity.Agent, error) {
 	var agent entity.Agent
