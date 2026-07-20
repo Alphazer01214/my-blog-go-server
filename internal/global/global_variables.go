@@ -7,6 +7,7 @@ import (
 	"blog.alphazer01214.top/internal/config"
 	"blog.alphazer01214.top/internal/database"
 	"blog.alphazer01214.top/internal/logs"
+	"blog.alphazer01214.top/pkg/kafka"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
@@ -19,6 +20,7 @@ var (
 	Log          *logs.Logman
 	Redis        *redis.Client
 	JWTBlacklist map[string]bool
+	KafkaWriter  *kafka.Producer // Kafka 生产者
 )
 
 // User key: id value: token
@@ -33,18 +35,14 @@ func Init() {
 
 func GetConfig() *config.Config {
 	if Config == nil {
-		log.Print("nil config")
 		panic("nil config")
-		return nil
 	}
 	return Config
 }
 
 func GetDB() *gorm.DB {
 	if DB == nil {
-		log.Print("nil db")
 		panic("nil db")
-		return nil
 	}
 	return DB
 }
@@ -53,8 +51,15 @@ func GetRedis() *redis.Client {
 	if Redis == nil {
 		log.Print("nil redis")
 		panic("nil redis")
-		return nil
 	}
 
 	return Redis
+}
+
+func GetKafka() *kafka.Producer {
+	if KafkaWriter == nil {
+		log.Print("nil kafka producer")
+		return nil
+	}
+	return KafkaWriter
 }

@@ -9,6 +9,8 @@ type Services struct {
 	FileService
 	TomoriService
 	VideoService
+	SignalService
+	WatchlistService
 }
 
 var Service = new(Services)

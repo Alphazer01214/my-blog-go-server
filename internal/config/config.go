@@ -72,19 +72,32 @@ type TushareConfig struct {
 	DataDir string `yaml:"data_dir" json:"data_dir"`
 }
 
+type Kafka struct {
+	Brokers []string `yaml:"brokers" json:"brokers"`
+	Enabled bool     `yaml:"enabled" json:"enabled"`
+}
+
+type Elasticsearch struct {
+	Addresses []string `yaml:"addresses" json:"addresses"`
+	Enabled   bool     `yaml:"enabled" json:"enabled"`
+	Index     string   `yaml:"index" json:"index"` // 默认帖子索引名
+}
+
 type Tools struct {
 	WebSearch WebSearchConfig `yaml:"web_search" json:"web_search"`
 	Tushare   TushareConfig   `yaml:"tushare" json:"tushare"`
 }
 
 type Config struct {
-	Server   *Server   `yaml:"server" json:"server"`
-	Postgres *Postgres `yaml:"postgres" json:"postgres"`
-	LLM      *LLM      `yaml:"llm" json:"llm"`
-	Redis    *Redis    `yaml:"redis" json:"redis"`
-	JWT      *JWT      `yaml:"jwt" json:"jwt"`
-	Market   *Market   `yaml:"market" json:"market"`
-	Tools    *Tools    `yaml:"tools" json:"tools"`
+	Server        *Server        `yaml:"server" json:"server"`
+	Postgres      *Postgres      `yaml:"postgres" json:"postgres"`
+	LLM           *LLM           `yaml:"llm" json:"llm"`
+	Redis         *Redis         `yaml:"redis" json:"redis"`
+	JWT           *JWT           `yaml:"jwt" json:"jwt"`
+	Market        *Market        `yaml:"market" json:"market"`
+	Kafka         *Kafka         `yaml:"kafka" json:"kafka"`
+	Elasticsearch *Elasticsearch `yaml:"elasticsearch" json:"elasticsearch"`
+	Tools         *Tools         `yaml:"tools" json:"tools"`
 }
 
 func (dc *Postgres) GetDSN() string {
@@ -105,12 +118,14 @@ func LoadConfig() *Config {
 		panic(err)
 	}
 	cfg := Config{
-		Server:   &Server{},
-		Postgres: &Postgres{},
-		LLM:      &LLM{},
-		Redis:    &Redis{},
-		JWT:      &JWT{},
-		Market:   &Market{},
+		Server:        &Server{},
+		Postgres:      &Postgres{},
+		LLM:           &LLM{},
+		Redis:         &Redis{},
+		JWT:           &JWT{},
+		Market:        &Market{},
+		Kafka:         &Kafka{},
+		Elasticsearch: &Elasticsearch{},
 	}
 
 	if err := yaml.Unmarshal(cfgFile, &cfg); err != nil {

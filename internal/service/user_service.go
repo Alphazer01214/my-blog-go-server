@@ -1,18 +1,34 @@
 package service
 
 import (
+	"context"
 	"errors"
+	"time"
 
 	"blog.alphazer01214.top/internal/entity"
 	"blog.alphazer01214.top/internal/global"
 	"blog.alphazer01214.top/internal/request"
 	"blog.alphazer01214.top/internal/response"
 	"blog.alphazer01214.top/internal/utils"
+	"blog.alphazer01214.top/pkg/cache"
 
 	"gorm.io/gorm"
 )
 
 type UserService struct{}
+
+// userCache 用户信息缓存（10 分钟 TTL）
+var userCache *cache.RedisCache[response.UserInfo]
+
+// getUserCache 懒初始化用户缓存
+func getUserCache() *cache.RedisCache[response.UserInfo] {
+	if userCache == nil {
+		if rdb := global.GetRedis(); rdb != nil {
+			userCache = cache.NewRedisCache[response.UserInfo](rdb, "cache:userinfo:", 10*time.Minute)
+		}
+	}
+	return userCache
+}
 
 func (us *UserService) Register(user *entity.User, env *entity.EnvInfo) (*response.Register, error) {
 	if us.isUsernameExist(user.Username) {
@@ -114,11 +130,30 @@ func (us *UserService) GenerateToken(user *entity.User) (*response.Token, error)
 }
 
 func (us *UserService) GetUserInfoById(id uint, viewerId uint) (response.UserInfo, error) {
+	// 尝试从缓存获取（仅当不需要检查关注状态时）
+	if viewerId == 0 || viewerId == id {
+		if uc := getUserCache(); uc != nil {
+			cached, err := uc.Get(context.Background(), cache.CacheKey(id))
+			if err == nil && cached != nil {
+				return *cached, nil
+			}
+		}
+	}
+
 	usr, err := us.getUserInstanceById(id)
 	if err != nil {
 		return response.UserInfo{}, err
 	}
-	return us.toUserInfo(usr, viewerId), nil
+	info := us.toUserInfo(usr, viewerId)
+
+	// 写入缓存（仅当不需要检查关注状态时）
+	if viewerId == 0 || viewerId == id {
+		if uc := getUserCache(); uc != nil {
+			_ = uc.Set(context.Background(), cache.CacheKey(id), &info)
+		}
+	}
+
+	return info, nil
 }
 
 func (us *UserService) GetAllUserInfo(viewerId uint) ([]response.UserInfo, error) {
@@ -273,6 +308,9 @@ func (us *UserService) Follow(followerId, followingId uint) (*response.FollowSta
 	if err != nil {
 		return nil, err
 	}
+	// 发布 Kafka 事件：关注
+	go publishFollowNotification(followerId, followingId)
+
 	return &response.FollowStatus{
 		IsFollowing: true,
 		IsMutual:    isMutual,

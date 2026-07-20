@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -8,12 +9,17 @@ import (
 	"syscall"
 
 	"blog.alphazer01214.top/cmd"
+	"blog.alphazer01214.top/internal/api"
 	"blog.alphazer01214.top/internal/global"
+	internalKafka "blog.alphazer01214.top/internal/kafka"
 	"blog.alphazer01214.top/internal/keepalive"
 	"blog.alphazer01214.top/internal/router"
+	"blog.alphazer01214.top/internal/search"
 	"blog.alphazer01214.top/internal/service"
 	"blog.alphazer01214.top/internal/utils"
+	"blog.alphazer01214.top/pkg/kafka"
 	"blog.alphazer01214.top/pkg/middleware"
+	ws "blog.alphazer01214.top/pkg/websocket"
 
 	"github.com/gin-gonic/gin"
 )
@@ -26,6 +32,16 @@ func main() {
 
 	cmd.InitFlag()
 	gin.SetMode(global.Config.Server.Mode)
+
+	// 初始化 Elasticsearch
+	searchSvc := initElasticsearch()
+
+	// 初始化 WebSocket Hub
+	wsHub := initWebSocket()
+
+	// 初始化 Kafka（依赖 ES 服务和 WebSocket Hub）
+	kafkaCleanup := initKafka(searchSvc, wsHub)
+	defer kafkaCleanup()
 
 	// 创建 Gin 路由实例
 	r := gin.Default()
@@ -40,7 +56,7 @@ func main() {
 		})
 	})
 
-	// 设置用户路由
+	// 设置路由
 	router.SetupUserRouter(r)
 	router.SetupPostRouter(r)
 	router.SetupCommentRouter(r)
@@ -48,6 +64,10 @@ func main() {
 	router.SetupFileRouter(r)
 	router.SetupTomoriRouter(r)
 	router.SetupVideoRouter(r)
+	router.SetupWsRouter(r)
+	router.SetupSignalRouter(r)
+	router.SetupWatchlistRouter(r)
+	router.SetupStockRouter(r)
 
 	// keepalive 后台任务
 	ka := keepalive.NewManager()
@@ -82,4 +102,86 @@ func main() {
 
 	<-quit
 	fmt.Println("Shutting down server...")
+	_ = wsHub // 防止未使用警告
+}
+
+// initElasticsearch 初始化 Elasticsearch 搜索服务
+func initElasticsearch() *search.SearchService {
+	cfg := global.GetConfig()
+	if cfg.Elasticsearch == nil || !cfg.Elasticsearch.Enabled || len(cfg.Elasticsearch.Addresses) == 0 {
+		fmt.Println("[elasticsearch] disabled or no addresses configured")
+		return nil
+	}
+
+	searchSvc, err := search.NewSearchService(cfg.Elasticsearch.Addresses, cfg.Elasticsearch.Index)
+	if err != nil {
+		fmt.Printf("[elasticsearch] init failed: %v\n", err)
+		return nil
+	}
+
+	// 注入到 service 层
+	service.SearchSvc = searchSvc
+	fmt.Println("[elasticsearch] initialized")
+	return searchSvc
+}
+
+// initKafka 初始化 Kafka 生产者和消费者
+func initKafka(searchSvc *search.SearchService, wsHub *ws.Hub) func() {
+	cfg := global.GetConfig()
+	if cfg.Kafka == nil || !cfg.Kafka.Enabled || len(cfg.Kafka.Brokers) == 0 {
+		fmt.Println("[kafka] disabled or no brokers configured")
+		return func() {}
+	}
+
+	brokers := cfg.Kafka.Brokers
+	rdb := global.GetRedis()
+
+	// 初始化生产者
+	producer := kafka.NewProducer(brokers, kafka.TopicNotification)
+	global.KafkaWriter = producer
+	fmt.Println("[kafka] producer initialized")
+
+	// 创建消费者（注入 ES 服务和 WebSocket Hub）
+	notificationHandler := internalKafka.NewNotificationHandler()
+	notificationHandler.SetHub(wsHub) // 注入 WebSocket Hub
+	postEventHandler := internalKafka.NewPostEventHandler(searchSvc)
+	cacheHandler := internalKafka.NewCacheHandler()
+
+	consumers := []*kafka.Consumer{
+		kafka.NewConsumer(brokers, kafka.TopicNotification, "notification-group", notificationHandler.Handle, rdb),
+		kafka.NewConsumer(brokers, kafka.TopicPostEvent, "post-event-group", postEventHandler.Handle, rdb),
+		kafka.NewConsumer(brokers, kafka.TopicUserEvent, "cache-group", cacheHandler.Handle, rdb),
+	}
+
+	// 启动消费者
+	ctx, cancel := context.WithCancel(context.Background())
+	for _, c := range consumers {
+		go c.Consume(ctx)
+	}
+	fmt.Println("[kafka] consumers started")
+
+	// 返回清理函数
+	return func() {
+		cancel()
+		for _, c := range consumers {
+			c.Close()
+		}
+		producer.Close()
+		fmt.Println("[kafka] all stopped")
+	}
+}
+
+// initWebSocket 初始化 WebSocket Hub
+func initWebSocket() *ws.Hub {
+	hub := ws.NewHub()
+	go hub.Run()
+
+	// 注入到 API 层
+	api.WsHub = hub
+
+	// 注入到 Kafka 通知处理器（用于实时推送）
+	// 注意：这里需要在 Kafka 消费者启动前完成注入
+
+	fmt.Println("[websocket] hub started")
+	return hub
 }

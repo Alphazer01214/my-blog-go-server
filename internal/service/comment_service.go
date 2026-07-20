@@ -8,6 +8,7 @@ import (
 	"blog.alphazer01214.top/internal/entity"
 	"blog.alphazer01214.top/internal/global"
 	"blog.alphazer01214.top/internal/response"
+	pkgKafka "blog.alphazer01214.top/pkg/kafka"
 	"gorm.io/gorm"
 )
 
@@ -60,6 +61,14 @@ func (cs *CommentService) Create(comment *entity.Comment) (*response.Comment, er
 	if author, err := Service.UserService.GetUserInfoById(comment.UserId, 0); err == nil {
 		r.Author = author
 	}
+
+	// 发布 Kafka 事件：评论创建
+	go func() {
+		publishCommentEvent(pkgKafka.ActionComment, comment.UserId, comment.ID, comment.TargetType, comment.TargetId)
+		publishCommentNotification(comment.UserId, comment.ID, comment.TargetType, comment.TargetId,
+			fmt.Sprintf("用户 %d 评论了你的%s", comment.UserId, string(comment.TargetType)))
+	}()
+
 	return r, nil
 }
 

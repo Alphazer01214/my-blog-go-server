@@ -1,4 +1,5 @@
 *.exe
+docs/
 /config/
 .idea/
 .env

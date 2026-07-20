@@ -450,6 +450,8 @@ func (ai *AIService) registerTools(ctx context.Context) ([]tool.BaseTool, []*sch
 	webSearchTool := tomori_tool.NewWebSearchTool(global.GetConfig().Tools.WebSearch.ApiKey)
 	searchPostTool := tomori_tool.NewSearchPostTool()
 	tushareTool := tomori_tool.NewTushareTool(global.GetConfig().Tools.Tushare.DataDir)
+	newsSearchTool := tomori_tool.NewNewsSearchTool()
+	fundamentalTool := tomori_tool.NewFundamentalAnalysisTool(global.GetConfig().Tools.Tushare.DataDir)
 
 	webSearchToolInfo, err := webSearchTool.Info(ctx)
 	if err != nil {
@@ -463,9 +465,44 @@ func (ai *AIService) registerTools(ctx context.Context) ([]tool.BaseTool, []*sch
 	if err != nil {
 		return nil, nil, fmt.Errorf("tushare tool info error: %w", err)
 	}
+	newsSearchToolInfo, err := newsSearchTool.Info(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("news search tool info error: %w", err)
+	}
+	fundamentalToolInfo, err := fundamentalTool.Info(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("fundamental analysis tool info error: %w", err)
+	}
 
-	tools := []tool.BaseTool{webSearchTool, searchPostTool, tushareTool}
-	toolInfos := []*schema.ToolInfo{webSearchToolInfo, searchPostToolInfo, tushareToolInfo}
+	tools := []tool.BaseTool{webSearchTool, searchPostTool, tushareTool, newsSearchTool, fundamentalTool}
+	toolInfos := []*schema.ToolInfo{webSearchToolInfo, searchPostToolInfo, tushareToolInfo, newsSearchToolInfo, fundamentalToolInfo}
+	return tools, toolInfos, nil
+}
+
+// registerToolsByName 按名称注册工具（用于预设 Agent）
+func (ai *AIService) registerToolsByName(ctx context.Context, toolNames []string) ([]tool.BaseTool, []*schema.ToolInfo, error) {
+	allTools := map[string]tool.BaseTool{
+		"web_search":            tomori_tool.NewWebSearchTool(global.GetConfig().Tools.WebSearch.ApiKey),
+		"search_post":           tomori_tool.NewSearchPostTool(),
+		"tushare":               tomori_tool.NewTushareTool(global.GetConfig().Tools.Tushare.DataDir),
+		"news_search":           tomori_tool.NewNewsSearchTool(),
+		"fundamental_analysis":  tomori_tool.NewFundamentalAnalysisTool(global.GetConfig().Tools.Tushare.DataDir),
+	}
+
+	var tools []tool.BaseTool
+	var toolInfos []*schema.ToolInfo
+
+	for _, name := range toolNames {
+		if t, ok := allTools[name]; ok {
+			info, err := t.Info(ctx)
+			if err != nil {
+				continue
+			}
+			tools = append(tools, t)
+			toolInfos = append(toolInfos, info)
+		}
+	}
+
 	return tools, toolInfos, nil
 }
 
@@ -560,6 +597,9 @@ func (ai *AIService) ToolCallingStreamChat(ctx context.Context, userId uint, cha
 		Time:    time.Now().Unix(),
 		Content: "",
 	}
+
+	session.ChatMessages = append(session.ChatMessages, firstUsrChatMessage)
+	ai.saveSessionAsync(userId, chatId, session)
 
 	for round < maxToolRounds {
 		// 使用 Stream 进行流式调用
@@ -692,7 +732,7 @@ func (ai *AIService) ToolCallingStreamChat(ctx context.Context, userId uint, cha
 	ai.SetStreamStatus(ctx, chatId, "done")
 
 	// 保存用户消息和助手消息到 session
-	session.ChatMessages = append(session.ChatMessages, firstUsrChatMessage, assistantMessage)
+	session.ChatMessages = append(session.ChatMessages, assistantMessage)
 
 	ai.saveSessionAsync(userId, chatId, session)
 	return nil
@@ -874,9 +914,9 @@ func (ai *AIService) AppendStreamChunk(ctx context.Context, chatId string, chunk
 	return err
 }
 
-// GetStreamChunks 获取所有流式 chunks
-func (ai *AIService) GetStreamChunks(ctx context.Context, chatId string) []entity.StreamChunk {
-	results, err := global.GetRedis().LRange(ctx, streamChunksKey(chatId), 0, -1).Result()
+// GetStreamChunks 获取指定索引之后的流式 chunks
+func (ai *AIService) GetStreamChunks(ctx context.Context, chatId string, fromIndex int) []entity.StreamChunk {
+	results, err := global.GetRedis().LRange(ctx, streamChunksKey(chatId), int64(fromIndex), -1).Result()
 	if err != nil {
 		return nil
 	}
@@ -890,6 +930,79 @@ func (ai *AIService) GetStreamChunks(ctx context.Context, chatId string) []entit
 		chunks = append(chunks, chunk)
 	}
 	return chunks
+}
+
+// GetStreamChunkCount 获取流式 chunks 总数
+func (ai *AIService) GetStreamChunkCount(ctx context.Context, chatId string) int {
+	count, err := global.GetRedis().LLen(ctx, streamChunksKey(chatId)).Result()
+	if err != nil {
+		return 0
+	}
+	return int(count)
+}
+
+// StreamChunkData 流式 chunk 数据，包含索引
+type StreamChunkData struct {
+	Index int
+	Chunk entity.StreamChunk
+}
+
+// SubscribeStream 订阅流式数据，返回一个 channel
+// 当有新 chunk 时会推送到 channel，当流式完成或出错时关闭 channel
+func (ai *AIService) SubscribeStream(ctx context.Context, chatId string) <-chan StreamChunkData {
+	ch := make(chan StreamChunkData, 100)
+
+	go func() {
+		defer close(ch)
+
+		sentIndex := 0
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+
+			// 获取当前 chunks 总数
+			totalCount := ai.GetStreamChunkCount(ctx, chatId)
+
+			// 推送新增的 chunks
+			if totalCount > sentIndex {
+				newChunks := ai.GetStreamChunks(ctx, chatId, sentIndex)
+				for _, chunk := range newChunks {
+					select {
+					case ch <- StreamChunkData{Index: sentIndex, Chunk: chunk}:
+						sentIndex++
+					case <-ctx.Done():
+						return
+					}
+				}
+			}
+
+			// 检查流式状态
+			status := ai.GetStreamStatus(ctx, chatId)
+			if status == "done" || status == "error" || status == "" {
+				// 流式结束，推送剩余 chunks 并退出
+				if totalCount > sentIndex {
+					newChunks := ai.GetStreamChunks(ctx, chatId, sentIndex)
+					for _, chunk := range newChunks {
+						select {
+						case ch <- StreamChunkData{Index: sentIndex, Chunk: chunk}:
+							sentIndex++
+						case <-ctx.Done():
+							return
+						}
+					}
+				}
+				return
+			}
+
+			// 轮询间隔
+			time.Sleep(50 * time.Millisecond)
+		}
+	}()
+
+	return ch
 }
 
 // SetStreamError 设置流式错误信息

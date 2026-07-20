@@ -23,13 +23,13 @@ type Apis struct {
 var Api = new(Apis)
 
 var (
-	userService    = service.Service.UserService
-	postService    = service.Service.PostService
-	commentService = service.Service.CommentService
-	aiService      = service.Service.AIService
-	marketService  = service.Service.MarketService
-	fileService    = service.Service.FileService
-	videoService   = service.Service.VideoService
+	userService    = &service.Service.UserService
+	postService    = &service.Service.PostService
+	commentService = &service.Service.CommentService
+	aiService      = &service.Service.AIService
+	marketService  = &service.Service.MarketService
+	fileService    = &service.Service.FileService
+	videoService   = &service.Service.VideoService
 )
 
 func Authorize(c *gin.Context) (request.AccessClaims, error) {

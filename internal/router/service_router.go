@@ -36,5 +36,7 @@ func SetupServiceRouter(r *gin.Engine) {
 		protected.DELETE("/chat/:chat_id", aiApi.DeleteChatSession)
 		protected.POST("/chat/update", aiApi.UpdateChatSession)
 		protected.GET("/favorites", postApi.GetFavorites)
+		protected.GET("/preset_agents", aiApi.GetPresetAgents)
+		protected.POST("/create_preset_agent", aiApi.CreatePresetAgent)
 	}
 }
